@@ -1,138 +1,267 @@
-from bs4 import BeautifulSoup
-from thefuzz import fuzz
-import gc
-import gzip
-import io
-import numpy as np
 import os
 import pandas as pd
 import pickle
 import re
-import string
-import sys
-import time
-import xml.etree.ElementTree as ET
+from thefuzz import fuzz
+
+# ---------------------- Cleaning Functions ----------------------
 
 
-def get_ps_digits(classification):
+def parse_class(class_str):
     """
-    Extract the digits following the PS prefix in the classification.
+    Split into prefix and digits.
+    E.g. PS3555.123 -> ('PS', 3555)
     """
-    match = re.search(r"PS(.*)", classification)
-    if match:
-        s = match.group(1).strip()
-    # drop any remaining letters; only retain numbers
+    m = re.match(r"([A-Z]+)(\d+)?", str(class_str))
+    if not m:
+        return None, None
+    return m.group(1), int(m.group(2)) if m.group(2) else None
+
+
+def matches_range(classification, prefix, num_min=None, num_max=None):
+    """
+    Test if a classification matches a given prefix and optional num range.
+    """
+    if not classification or not isinstance(classification, str):
+        return False
+    cls, num = parse_class(classification.strip())
+    if not cls or not classification.strip().startswith(prefix):
+        return False
+    if num_min is not None and (num is None or num < num_min):
+        return False
+    if num_max is not None and (num is None or num > num_max):
+        return False
+    return True
+
+
+def parse_range_spec(range_str):
+    """
+    Parse ranges: 'PS' -> {'prefix':'PS'}, 'PR9000-PR9999' -> {'prefix':'PR', 'min':9000, 'max':9999}
+    """
+    m = re.match(r"^([A-Z]+)(\d{0,})(-([A-Z]+)?(\d{1,}))?$", range_str)
+    if not m:
+        raise ValueError(f"Range spec not recognized: {range_str}")
+    prefix = m.group(1)
+    minval = int(m.group(2)) if m.group(2) else None
+    maxval = int(m.group(5)) if m.group(5) else None
+    return {"prefix": prefix, "min": minval, "max": maxval}
+
+
+def filter_classifications(classifications, class_range):
+    """
+    Given list of classification numbers, return all that match target.
+    """
+    prefix = class_range["prefix"]
+    minval = class_range.get("min")
+    maxval = class_range.get("max")
+    if not classifications:
+        return []
+    if isinstance(classifications, str):
+        classifications = [classifications]
+    matches = [c for c in classifications if matches_range(c, prefix, minval, maxval)]
+    return matches
+
+
+def get_digits_for_class(classification, class_range):
+    """
+    Extract digits from a classification number that matches the prefix.
+    """
+    if classification is None:
+        return None
+    s = str(classification)
+    prefix = class_range["prefix"]
+    m = re.match(rf"^{prefix}(\d+)", s)
+    return int(m.group(1)) if m else None
+
+
+def get_year_int(year):
+    """Extract a four-digit year from a string (or return None)."""
+    if year is None or (isinstance(year, float) and pd.isna(year)):
+        return None
+    match = re.search(r"\d{4}", str(year))
+    return int(match.group()) if match else None
+
+
+def get_years_ints(years):
+    # Robust None/NA/empty handling
+    if years is None:
+        return None
+    if isinstance(years, (list, tuple)):
+        if not years:
+            return None
+        years_int = [get_year_int(y) for y in years if get_year_int(y) is not None]
+        return min(years_int) if years_int else None
+    if hasattr(years, "size") and hasattr(years, "__getitem__"):
+        if years.size == 0:
+            return None
+        years_int = [get_year_int(y) for y in years if get_year_int(y) is not None]
+        return min(years_int) if years_int else None
     try:
-        if "." in s:
-            return int(s.split(".")[0].strip())
-        elif " " in s:
-            return int(s.split(" ")[0].strip())
-        else:
-            return int(classification.split("PS")[-1].split(".")[0].strip())
+        if pd.isna(years):
+            return None
+    except Exception:
+        pass
+    return get_year_int(str(years))
+
+
+def get_publishers_year_ints(publishers):
+    if publishers is None:
+        return None
+    if isinstance(publishers, (list, tuple)):
+        if not publishers:
+            return None
+        years = [get_year_int(p) for p in publishers if get_year_int(p) is not None]
+        return min(years) if years else None
+    if hasattr(publishers, "size") and hasattr(publishers, "__getitem__"):
+        if publishers.size == 0:
+            return None
+        years = [get_year_int(p) for p in publishers if get_year_int(p) is not None]
+        return min(years) if years else None
+    try:
+        if pd.isna(publishers):
+            return None
+    except Exception:
+        pass
+    return get_year_int(str(publishers))
+
+
+def get_decade(year):
+    """Convert a year into its decade, e.g. 1983 -> 1980."""
+    try:
+        year = int(year)
+        return (year // 10) * 10 if year > 0 else None
     except:
         return None
 
 
-def get_ps_digits(classification):
-    """
-    Extract digits immediately following "PS" up to but not including the first non-numeric character,
-    or until the end of the string if no non-numeric character follows.
-    """
-    match = re.search(r"PS(\d+)(?=[^\d]|$)", classification)
-    if match:
-        return int(match.group(1))
-    else:
-        return None
-
-
-def get_year_int(year):
-    """
-    Function to extract the year as an integer from the year column.
-    """
-    match = re.search(r"\d{4}", year)
-    return int(match.group()) if match else None
-
-
-def get_years_ints(year):
-    if type(year) is str:
-        return get_year_int(year)
-    # Resolve cases with multiple years to the earliest year:
-    elif type(year) is list:
-        y_temp = [get_year_int(y) for y in year]
-        y_temp = [y for y in y_temp if y is not None]
-        if y_temp:
-            return min(y_temp)
-        else:
-            return None
-
-
-def get_publishers_year_ints(publishers):
-    """Get year-like values from publishers, and take the minimum value.
-    (Rarely, LC records include publication year in the publisher field.)"""
-    if type(publishers) is str:
-        publishers = [publishers]
-    try:
-        return min([get_year_int(p) for p in publishers if get_year_int(p) is not None])
-    except ValueError:
-        return None
-
-
-def get_min_year(row):
-    return min(row["year_publisher_int"], row["publisher_year_int"])
-
-
-def clean_col(df, col):
-    return df[col].apply(lambda x: x[0] if len(x) == 1 else x)
-
-
-# clean up place names
 def clean_string(s):
-
-    if s is None:
+    """Lowercase, strip, remove all non-alpha characters (preserve spaces)."""
+    if s is None or (isinstance(s, float) and pd.isna(s)):
         return None
-
-    # Remove all characters other than A-Z (upper or lower) or space
+    s = str(s)
     s = re.sub(r"[^a-zA-Z\s]", "", s)
-
-    # Lowercase everything
-    s = s.lower()
-
-    # Strip whitespace
-    s = s.strip()
-
-    return s
-
-
-def get_decade(year):
-    if year > 0:
-        return year // 10 * 10
-
-
-def flatten_list(lst):
-    flat_list = []
-    for item in lst:
-        if isinstance(item, list):
-            flat_list.extend(flatten_list(item))
-        else:
-            flat_list.append(item)
-    return flat_list
+    return s.lower().strip()
 
 
 def get_target_cities(
-    placename, target_cities=["Boston", "Philadelphia", "New York"], threshold=85
+    placename, target_cities=("Boston", "Philadelphia", "New York"), threshold=85
 ):
-    """
-    Identifies occurrences of target cities in a messy placename string using an edit distance metric.
-    """
-    if pd.isna(placename) or not placename.strip():
+    """Return list of target cities if close match to placename, else 'Other' or 'No place of publication'."""
+    if (
+        placename is None
+        or (isinstance(placename, float) and pd.isna(placename))
+        or not str(placename).strip()
+    ):
         return "No place of publication"
+    placename_lower = str(placename).lower()
+    found = [
+        city
+        for city in target_cities
+        if fuzz.partial_ratio(city.lower(), placename_lower) >= threshold
+    ]
+    return found[0] if found else "Other"
 
-    cleaned_cities = list()
-    for target_city in target_cities:
-        if fuzz.partial_ratio(target_city.lower(), placename.lower()) >= threshold:
-            cleaned_cities.append(target_city)
 
-    if cleaned_cities:
-        return cleaned_cities
-    else:
-        return "Other"
+def flatten_first(item):
+    """Get first item if list, else return as is. None if empty but list."""
+    if isinstance(item, list):
+        return item[0] if item else None
+    return item
+
+
+def load_pickles_to_dataframe(pickle_dir):
+    """Load ALL pickles from directory & concat to single DataFrame."""
+    all_data = []
+    for file_name in os.listdir(pickle_dir):
+        if file_name.endswith(".pkl"):
+            file_path = os.path.join(pickle_dir, file_name)
+            with open(file_path, "rb") as f:
+                data = (
+                    pd.read_pickle(f)
+                    if file_name.endswith(".df.pkl")
+                    else pd.DataFrame(pickle.load(f))
+                )
+                all_data.append(data)
+    if not all_data:
+        raise RuntimeError("No pickles found in directory.")
+    df = pd.concat(all_data, ignore_index=True)
+    return df
+
+
+# ------------------------- Pipeline -----------------------------
+
+
+def cleaning_pipeline(df, class_range):
+    # For each record, filter to only target class_range
+    # Drop those with no matching classification numbers
+    df["matching_classifications"] = df["classifications"].map(
+        lambda clist: filter_classifications(clist, class_range)
+    )
+    df = df[df["matching_classifications"].apply(lambda m: len(m) > 0)]
+
+    # Take the *first* matching class (for numeric columns)
+    df["target_classification"] = df["matching_classifications"].map(flatten_first)
+    df["class_digits"] = df["target_classification"].map(
+        lambda x: get_digits_for_class(x, class_range)
+    )
+
+    df["publisher_first"] = df["publishers"].map(flatten_first)
+    df["personal_name_first"] = df["first_author"]
+    df["title_first"] = df["title"]
+
+    df["year_int"] = df["year"].map(get_years_ints)
+    df["publisher_year_int"] = df["publishers"].map(get_publishers_year_ints)
+    df["year_min"] = df[["year_int", "publisher_year_int"]].min(axis=1)
+    df["decade"] = df["year_min"].map(get_decade)
+    df["publisher_clean"] = df["publisher_first"].map(clean_string)
+
+    # Explode on 'places' (each place gets its own row)
+    if "places" in df.columns:
+        df = df.explode("places").reset_index(drop=True)
+    # Always compute these AFTER exploding
+    df["places_clean"] = df["places"].map(clean_string)
+    df["city_group"] = df["places_clean"].map(get_target_cities)
+
+    # Optionally drop any rows with missing numeric classification digits or year
+    df = df[df["class_digits"].notnull() & df["year_min"].notnull()]
+
+    return df
+
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Clean MARC LC records pickles into flat table."
+    )
+    parser.add_argument("--input_dir", required=True, help="Directory with .pkl files")
+    parser.add_argument("--output_csv", required=True, help="CSV file for output")
+    parser.add_argument(
+        "--output_pkl", default=None, help="Pickle file for output (optional)"
+    )
+    parser.add_argument(
+        "--class_range",
+        required=True,
+        help="Classification prefix or range (e.g. PS or PR9000-PR9999)",
+    )
+    args = parser.parse_args()
+
+    print(f"Loading record pickles from: {args.input_dir}")
+
+    df = load_pickles_to_dataframe(args.input_dir)
+    print(f"Loaded {len(df):,} records.")
+
+    print(f"Filtering and cleaning for range: {args.class_range}")
+    class_range = parse_range_spec(args.class_range)
+    df_clean = cleaning_pipeline(df, class_range)
+    print(
+        f"""Remaining after cleaning/validity: {len(df_clean):,} records.
+        Note that higher values possible due to exploded places."""
+    )
+
+    df_clean.to_csv(args.output_csv, index=False)
+    print(f"Wrote cleaned CSV to: {args.output_csv}")
+
+    if args.output_pkl:
+        df_clean.to_pickle(args.output_pkl)
+        print(f"Wrote cleaned DataFrame pickle to: {args.output_pkl}")

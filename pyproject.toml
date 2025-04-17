@@ -7,7 +7,13 @@ authors = [
     { name = "Erik Fredner", email = "erik@fredner.org" }
 ]
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "jupyter>=1.1.1",
+    "lxml>=5.3.2",
+    "matplotlib>=3.10.1",
+    "pandas>=2.2.3",
+    "thefuzz>=0.22.1",
+]
 
 [build-system]
 requires = ["hatchling"]
