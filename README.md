@@ -6,23 +6,8 @@ Tools for extracting and analyzing publication imprints from the Library of Cong
 
 - Python 3.12 or higher
 - Git
-- Approximately 10–20 GB of disk space for raw MARC XML dumps and intermediate files
+- Approximately 20 GB of disk space for raw MARC XML dumps and intermediate files
 - Unix-like OS (macOS/Linux) with `libxml2` (for `lxml` installation)
-
-## Setup
-
-```bash
-# Clone the repository
-git clone <repository-url>
-cd imprints
-
-# Create and activate a virtual environment
-python3.12 -m venv .venv
-source .venv/bin/activate
-
-# Install project dependencies
-pip install -e .
-```
 
 ## Download Raw Data
 
