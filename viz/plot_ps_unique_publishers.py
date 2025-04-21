@@ -7,6 +7,7 @@ import argparse
 
 import pandas as pd
 import matplotlib.pyplot as plt
+import numpy as np
 
 
 def load_data(csv_path: str) -> pd.DataFrame:
@@ -40,6 +41,11 @@ def main():
         default="./viz/ps_unique_publishers.png",
         help="Output file path for the figure (default: ./viz/ps_unique_publishers.png)",
     )
+    parser.add_argument(
+        "--ci",
+        action="store_true",
+        help="Include 95% confidence interval shading around unique publisher counts",
+    )
     args = parser.parse_args()
 
     df = load_data(args.input_csv)
@@ -53,16 +59,25 @@ def main():
     counts = df.groupby("year_min")["publisher_clean"].nunique()
     years = counts.index.astype(int)
     values = counts.values
+    # Optionally compute 95% CI (approximate, assuming Poisson/normal)
+    if args.ci:
+        z = 1.96
+        se = np.sqrt(values)
+        lower = np.clip(values - z * se, a_min=0, a_max=None)
+        upper = values + z * se
 
     # Plot unique publisher counts with consistent color C2
     plt.figure(dpi=600)
     plt.style.use("tableau-colorblind10")
+    # Shade CI if requested
+    if args.ci:
+        plt.fill_between(years, lower, upper, color="C2", alpha=0.2)
     plt.plot(years, values, color="C2", linewidth=2)
     plt.xlabel("Year")
     plt.ylabel("Unique publishers")
     # Add headroom at top
     ymin = values.min()
-    ymax = values.max()
+    ymax = upper.max() if args.ci else values.max()
     plt.ylim(ymin, ymax * 1.05)
     plt.tight_layout()
     os.makedirs(os.path.dirname(args.output), exist_ok=True)

@@ -21,6 +21,7 @@ def compute_city_share(
     start_year: int,
     end_year: int,
     window: int,
+    include_ci: bool = False,
 ) -> pd.DataFrame:
     """
     Compute annual percentage of records published in `city` (no smoothing).
@@ -37,6 +38,23 @@ def compute_city_share(
                      .unstack(fill_value=0)
     # Convert counts to percentages
     pct = counts.div(counts.sum(axis=1), axis=0) * 100
+    # Optionally compute 95% confidence intervals for the city proportion
+    if include_ci:
+        # Total per year and city counts
+        totals = counts.sum(axis=1)
+        city_counts = counts.get(1, pd.Series(0, index=counts.index))
+        # Proportion and standard error
+        p = city_counts / totals
+        se = (p * (1 - p) / totals) ** 0.5
+        z = 1.96
+        # Compute lower/upper bounds in percent
+        lower = (p - z * se) * 100
+        upper = (p + z * se) * 100
+        # Clamp bounds to [0, 100]
+        lower = lower.clip(lower=0)
+        upper = upper.clip(upper=100)
+        pct['ci_lower'] = lower
+        pct['ci_upper'] = upper
     return pct
 
 
@@ -47,6 +65,7 @@ def plot_area(
     end_year: int,
     window: int,
     output_path: str = None,
+    include_ci: bool = False,
 ) -> None:
     """Plot a stacked area chart of city vs other locations and save or show."""
     # Use colorblind-friendly palette
@@ -56,6 +75,11 @@ def plot_area(
     # Column '1' is the True (in_city) percentage
     pct_city = pct_df.get(1)
     years = pct_city.index
+    # Optionally plot 95% CI as shaded band
+    if include_ci and 'ci_lower' in pct_df.columns and 'ci_upper' in pct_df.columns:
+        lower = pct_df['ci_lower']
+        upper = pct_df['ci_upper']
+        ax.fill_between(years, lower, upper, color="C0", alpha=0.2)
     # Plot percentage of imprints in target city as a line
     ax.plot(years, pct_city, color="C0")
     # 50% reference line
@@ -161,6 +185,11 @@ def main():
         default="./viz/ps_new_york_share.png",
         help="Output file path for the figure (default: ./viz/ps_new_york_share.png)",
     )
+    parser.add_argument(
+        "--ci",
+        action="store_true",
+        help="Include 95% confidence intervals for city share",
+    )
     args = parser.parse_args()
 
     df = load_data(args.input_csv)
@@ -170,6 +199,7 @@ def main():
         start_year=args.start_year,
         end_year=args.end_year,
         window=args.window,
+        include_ci=args.ci,
     )
     plot_area(
         pct,
@@ -178,6 +208,7 @@ def main():
         end_year=args.end_year,
         window=args.window,
         output_path=args.output,
+        include_ci=args.ci,
     )
 
 

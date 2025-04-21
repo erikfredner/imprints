@@ -8,6 +8,7 @@ import argparse
 
 import pandas as pd
 import matplotlib.pyplot as plt
+import numpy as np
 
 
 def load_data(csv_path: str) -> pd.DataFrame:
@@ -34,6 +35,11 @@ def main():
         default="./viz/ps_counts_line.png",
         help="Output path for line chart (default: ./viz/ps_counts_line.png)",
     )
+    parser.add_argument(
+        "--ci",
+        action="store_true",
+        help="Include 95% confidence intervals for both city and other counts",
+    )
     args = parser.parse_args()
 
     df = load_data(args.input_csv)
@@ -54,6 +60,19 @@ def main():
     # Plot line chart: New York first for consistent color (C0), then Other (C1)
     plt.figure(dpi=600)
     plt.style.use("tableau-colorblind10")
+    # Optionally compute and plot 95% CI shading for both series
+    if args.ci:
+        z = 1.96
+        # City counts CI
+        se_city = np.sqrt(city_counts)
+        lower_city = (city_counts - z * se_city).clip(lower=0)
+        upper_city = city_counts + z * se_city
+        plt.fill_between(years, lower_city, upper_city, color="C0", alpha=0.2)
+        # Other locations CI
+        se_other = np.sqrt(other_counts)
+        lower_other = (other_counts - z * se_other).clip(lower=0)
+        upper_other = other_counts + z * se_other
+        plt.fill_between(years, lower_other, upper_other, color="C1", alpha=0.2)
     # Plot New York counts first to assign C0
     plt.plot(years, city_counts, label=args.city, color="C0")
     # Plot other locations counts second to assign C1
