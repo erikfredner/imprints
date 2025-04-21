@@ -7,18 +7,19 @@ Tools for extracting and analyzing publication imprints from the Library of Cong
 - Python 3.12 or higher
 - Git
 - Approximately 20 GB of disk space for raw MARC XML dumps and intermediate files
-- Unix-like OS (macOS/Linux) with `libxml2` (for `lxml` installation)
+- Unix-like OS (macOS/Linux)
+- `uv`
 
 ## Download Raw Data
 
 Download the *Library of Congress Books All MARC Records* (2019) dataset from:
 <https://lccn.loc.gov/2020445551>
 
-Unpack the archive so that `RAW_DATA_DIR` contains many `.xml.gz` files.
+Unpack the archive so that `RAW_DATA_DIR` contains your `.xml.gz` files.
 
 ## 1. Data Collection by LC Class
 
-Extract records for each LC class of interest (PS, PZ, F, E):
+Extract records for each LC class of interest (e.g., PS):
 
 ```bash
 # Example: PS class
@@ -75,20 +76,9 @@ All plotting scripts are in the `viz/` directory. They read from `data/` and wri
 Basic usage examples:
 
 ```bash
-# New York time trends
-python viz/plot_mds_ny_time_trends.py --input-csv data/MDS_pub_locations.csv
-
 # PS imprint counts (New York vs Other)
 python viz/plot_ps_counts.py --input-csv data/PS/data.csv
 
 # PS New York share
 python viz/plot_ps_new_york_share.py --input-csv data/PS/data.csv
-```
-
-To run all visualization scripts:
-
-```bash
-for script in viz/*.py; do
-    python "$script"
-done
 ```
