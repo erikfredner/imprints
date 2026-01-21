@@ -38,7 +38,6 @@ def extract_subfields(record, tag, subfield_code, ns):
         for subfield in record.findall(
             f'marc:datafield[@tag="{tag}"]/marc:subfield[@code="{subfield_code}"]', ns
         )
-        if subfield.text is not None
     ]
 
 
@@ -104,10 +103,7 @@ def parse_range_spec(range_str):
 def process_record(record, class_range):
     ns = {"marc": "http://www.loc.gov/MARC21/slim"}
     classifications = extract_subfields(record, "050", "a", ns)
-    if not classifications:
-        return None
-    if not filter_classification(classifications, class_range):
-        return None
+    matches_class_range = filter_classification(classifications, class_range)
 
     lccn = extract_subfields(record, "010", "a", ns)
     personal_name_100 = extract_subfields(record, "100", "a", ns)
@@ -123,6 +119,7 @@ def process_record(record, class_range):
     data = {
         "lccn": lccn[0] if lccn else None,
         "classifications": classifications,
+        "matches_class_range": matches_class_range,
         "title": title[0] if title else None,
         "year": years,
         "places": places,
@@ -141,8 +138,7 @@ def process_single_file(args):
     try:
         for record in parse_records(file_path):
             data = process_record(record, class_range)
-            if data:
-                all_data.append(data)
+            all_data.append(data)
         with open(output_file, "wb") as f:
             pickle.dump(all_data, f, protocol=pickle.HIGHEST_PROTOCOL)
         return f"Processed: {os.path.basename(file_path)} ({len(all_data)} records, {time.time()-start_time:.1f}s)"
@@ -178,7 +174,7 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="Extract/filter MARC xml.gz files for arbitrary LC range."
+        description="Extract MARC xml.gz files and mark records that match an LC range."
     )
     parser.add_argument(
         "--input_dir",
@@ -206,9 +202,5 @@ if __name__ == "__main__":
     file_list = get_xml_gzs(args.input_dir)
     print(f"Found {len(file_list)} files to process.")
 
-    # Step 2: Process files in parallel for target LC range
+    # Step 2: Process files in parallel (all records kept, matching flagged)
     process_files_parallel(file_list, output_dir, class_range)
-
-    # Optionally: Combine into DataFrame after processing (if needed)
-    # df = load_pickles_to_dataframe(output_dir)
-    # df.to_csv(f"all_{range_dir_name}.csv", index=False)
