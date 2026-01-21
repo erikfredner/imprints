@@ -2,7 +2,11 @@ import os
 import pandas as pd
 import pickle
 import re
-from thefuzz import fuzz
+from functools import lru_cache
+
+NYC_VARIANTS_PATH = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "..", "nyc_variants.txt")
+)
 
 # ---------------------- Cleaning Functions ----------------------
 
@@ -58,7 +62,18 @@ def filter_classifications(classifications, class_range):
         return []
     if isinstance(classifications, str):
         classifications = [classifications]
-    matches = [c for c in classifications if matches_range(c, prefix, minval, maxval)]
+    matches = []
+    for c in classifications:
+        try:
+            if pd.isna(c):
+                continue
+        except Exception:
+            pass
+        c_str = str(c).strip()
+        if not c_str:
+            continue
+        if matches_range(c_str, prefix, minval, maxval):
+            matches.append(c_str)
     return matches
 
 
@@ -68,7 +83,12 @@ def get_digits_for_class(classification, class_range):
     """
     if classification is None:
         return None
-    s = str(classification)
+    try:
+        if pd.isna(classification):
+            return None
+    except Exception:
+        pass
+    s = str(classification).strip()
     prefix = class_range["prefix"]
     m = re.match(rf"^{prefix}(\d+)", s)
     return int(m.group(1)) if m else None
@@ -135,31 +155,34 @@ def get_decade(year):
 
 
 def clean_string(s):
-    """Lowercase, strip, remove all non-alpha characters (preserve spaces)."""
+    """Lowercase, replace punctuation with spaces, collapse to single spaces."""
     if s is None or (isinstance(s, float) and pd.isna(s)):
         return None
     s = str(s)
-    s = re.sub(r"[^a-zA-Z\s]", "", s)
+    s = re.sub(r"[^a-zA-Z]", " ", s)
+    s = re.sub(r"\s+", " ", s)
     return s.lower().strip()
 
 
-def get_target_cities(
-    placename, target_cities=("Boston", "Philadelphia", "New York"), threshold=85
-):
-    """Return list of target cities if close match to placename, else 'Other' or 'No place of publication'."""
+@lru_cache(maxsize=1)
+def _load_nyc_variants():
+    """Load and clean NYC variant place names once."""
+    with open(NYC_VARIANTS_PATH, "r") as f:
+        return {v for v in (clean_string(line) for line in f) if v}
+
+
+def get_target_cities(placename):
+    """Return 'New York City', 'Other', or 'No place of publication' based on NYC variants."""
     if (
         placename is None
         or (isinstance(placename, float) and pd.isna(placename))
         or not str(placename).strip()
     ):
         return "No place of publication"
-    placename_lower = str(placename).lower()
-    found = [
-        city
-        for city in target_cities
-        if fuzz.partial_ratio(city.lower(), placename_lower) >= threshold
-    ]
-    return found[0] if found else "Other"
+    placename_clean = clean_string(placename)
+    if not placename_clean:
+        return "Other"
+    return "New York City" if placename_clean in _load_nyc_variants() else "Other"
 
 
 def flatten_first(item):
@@ -167,6 +190,20 @@ def flatten_first(item):
     if isinstance(item, list):
         return item[0] if item else None
     return item
+
+
+def normalize_places(value):
+    """Ensure places value is list-like and keep rows with missing places."""
+    if value is None:
+        return [None]
+    try:
+        if pd.isna(value):
+            return [None]
+    except Exception:
+        pass
+    if isinstance(value, (list, tuple)):
+        return value if value else [None]
+    return [value]
 
 
 def load_pickles_to_dataframe(pickle_dir):
@@ -217,6 +254,7 @@ def cleaning_pipeline(df, class_range):
 
     # Explode on 'places' (each place gets its own row)
     if "places" in df.columns:
+        df["places"] = df["places"].map(normalize_places)
         df = df.explode("places").reset_index(drop=True)
     # Always compute these AFTER exploding
     df["places_clean"] = df["places"].map(clean_string)
