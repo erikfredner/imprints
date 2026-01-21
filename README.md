@@ -45,3 +45,7 @@ python viz/fig1.py
 By default, they assume that you have placed the outputs of `data_collection` and `data_cleaning` in `data/PS/data.csv`
 
 `predict.py` creates the linear model referenced inline, as well as a figure that is not included in the article.
+
+## AI Statement
+
+I used [OpenAI's `codex`](https://github.com/openai/codex) to help write and refactor code.
