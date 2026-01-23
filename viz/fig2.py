@@ -37,7 +37,7 @@ def compute_counts(df: pd.DataFrame, city: str, include_no_place: bool = False) 
     df["category"] = np.select(
         [
             city_group == city,
-            city_group == "No place of publication.",
+            city_group == "No place of publication",
         ],
         ["city", "no_place"],
         default="other",
@@ -94,7 +94,7 @@ def main():
     parser.add_argument(
         "--include-no-place",
         action="store_true",
-        help='Plot "No place of publication." as its own series',
+        help='Plot "No place of publication" as its own series',
     )
     args = parser.parse_args()
 
