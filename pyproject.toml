@@ -8,14 +8,11 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
-    "jupyter>=1.1.1",
     "lxml>=5.3.2",
     "matplotlib>=3.10.1",
-    "ollama>=0.6.1",
     "pandas>=2.2.3",
     "scipy>=1.15.2",
     "statsmodels>=0.14.4",
-    "thefuzz>=0.22.1",
 ]
 
 [build-system]
