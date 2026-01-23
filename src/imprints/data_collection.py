@@ -111,10 +111,12 @@ def process_record(record, class_range):
     years_260 = extract_subfields(record, "260", "c", ns)
     years_264 = extract_subfields(record, "264", "c", ns)
     places_260 = extract_subfields(record, "260", "a", ns)
-    publisher_260 = extract_subfields(record, "260", "b", ns)
     places_264 = extract_subfields(record, "264", "a", ns)
+    publisher_260 = extract_subfields(record, "260", "b", ns)
+    publisher_264 = extract_subfields(record, "264", "b", ns)
     years = list(dict.fromkeys(years_260 + years_264))
     places = list(dict.fromkeys(places_260 + places_264))
+    publishers = list(dict.fromkeys(publisher_260 + publisher_264))
 
     data = {
         "lccn": lccn[0] if lccn else None,
@@ -123,7 +125,7 @@ def process_record(record, class_range):
         "title": title[0] if title else None,
         "year": years,
         "places": places,
-        "publishers": publisher_260,
+        "publishers": publishers,
         "first_author": personal_name_100[0] if personal_name_100 else None,
     }
     return data
