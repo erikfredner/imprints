@@ -25,7 +25,7 @@ This creates `data/PS` containing `.pkl` files with data from the `.xml.gz` file
 
 Convert the pickles into a CSV with normalized places of publication.
 
-Values in `data/nyc_variants.txt` were identified by `gpt-5.2-2025-12-11` as referencing NYC from a complete list of unique cleaned placenames derived from the PS range. Due to errors and inconsistencies in the spelling and representation of placenames (both by publishers and by LC catalogers), using an LLM to identify placenames associated with NYC produced fewer errors than programmatic searches for fuzzy matching strings like, `"new york city"`, `"nyc"`, etc. Even though matching on major placenames (such as adding `"brooklyn"` to the above list) would seem to be adequate, in practice it missed some places of publication given at the neighborhood level within NYC (e.g., `"Flushing, NY"`) or even more specific places of publication (e.g., `"Ditmas Ave."`)
+Values in `nyc_variants.txt` were identified by `gpt-5.2-2025-12-11` as referencing NYC from a complete list of unique cleaned placenames derived from the PS range. Due to errors and inconsistencies in the spelling and representation of placenames (both by publishers and by LC catalogers), using an LLM to identify placenames associated with NYC produced fewer errors than programmatic searches for fuzzy matching strings like, `"new york city"`, `"nyc"`, etc. Even though matching on major placenames (such as adding `"brooklyn"` to the above list) would seem to be adequate, in practice it missed some places of publication given at the neighborhood level within NYC (e.g., `"Flushing, NY"`) or even more specific places of publication (e.g., `"Ditmas Ave."`)
 
 ```bash
 python -m imprints.data_cleaning \
@@ -43,6 +43,8 @@ python viz/fig1.py
 ```
 
 By default, they assume that you have placed the outputs of `data_collection` and `data_cleaning` in `data/PS/data.csv`
+
+Generated figures are placed in `viz/` by default.
 
 `predict.py` creates the linear model referenced inline, as well as a figure that is not included in the article.
 
