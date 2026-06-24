@@ -73,6 +73,31 @@ Generated figures are written to `figures/outputs/` by default, each as PNG, SVG
 
 `predict.py` creates the linear model referenced inline, as well as a figure that is not included in the article.
 
+## Cross-range comparison
+
+To ask whether PS's New-York-share pattern is particular to PS, general to LC, or
+shared by a subset of ranges, the analysis is re-run for *every* LC range at both
+the top level (single letter, e.g. `P`) and the subclass level (alpha prefix, e.g.
+`PS`, `PR`). The `data/PS` pickles retain *all* records from the raw MARC XML, so no
+re-collection is needed — `imprints.cross_range` streams them once and writes small
+count tables.
+
+```bash
+# 1. Build NYC/Other count tables for all ranges -> data/cross_range/counts_*.csv
+python -m imprints.cross_range --input_dir data/PS --output_dir data/cross_range
+
+# 2. Per-range statistics + comparison figures -> figures/outputs/
+python figures/scripts/cross_range.py
+```
+
+Step 2 writes `cross_range_stats.csv` (per-range peak year, rise/fall slopes,
+humpiness percentile, and correlation with PS) and five figures:
+`cross_range_subclass`, `cross_range_top`, `ps_vs_rest`,
+`cross_range_small_multiples`, and `cross_range_crossing50` (only the subclasses
+whose NYC share ever reaches 50%, each drawn with a distinct linestyle/marker). The NYC share here is computed among imprints with an
+identifiable place (`NYC / (NYC + Other)`), and a record counts toward every range
+its classifications match.
+
 ## AI Statement
 
 I used [OpenAI's `codex`](https://github.com/openai/codex) to help write and refactor code.
