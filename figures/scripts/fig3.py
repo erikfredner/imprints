@@ -5,8 +5,10 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import pandas as pd
 
-DEFAULT_INPUT = Path(__file__).resolve().parents[1] / "data/PS/data.csv"
-DEFAULT_OUTPUT = Path(__file__).resolve().parent / "fig3.png"
+import style
+
+DEFAULT_INPUT = Path(__file__).resolve().parents[2] / "data/PS/data.csv"
+DEFAULT_OUTPUT = Path(__file__).resolve().parents[1] / "outputs/fig3.png"
 YEAR_START = 1900
 YEAR_END = 2010
 
@@ -41,7 +43,7 @@ def main() -> None:
         "--output",
         type=Path,
         default=DEFAULT_OUTPUT,
-        help="Output file path for the figure (default: viz/ps_unique_publishers.png)",
+        help="Output file path for the figure (default: figures/outputs/fig3.png)",
     )
     args = parser.parse_args()
 
@@ -52,18 +54,15 @@ def main() -> None:
     if counts.empty:
         raise ValueError(f"No publisher records between {YEAR_START} and {YEAR_END}.")
 
-    plt.figure(dpi=600)
-    plt.style.use("grayscale")
+    style.apply_style()
+    plt.figure()
     plt.plot(years, values, color="C0")
     plt.xlabel("Year")
     plt.ylabel("Unique PS publishers")
-    plt.grid(True, which="both", linestyle="--", linewidth=0.5, color="gray", alpha=0.3)
     ymax = values.max()
     plt.ylim(0, ymax * 1.05)
     plt.tight_layout()
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    plt.savefig(args.output, dpi=600)
-    print(f"Saved unique publisher plot to: {args.output}")
+    style.save_figure(args.output)
 
 
 if __name__ == "__main__":

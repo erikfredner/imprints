@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-Research code supporting the essay "Leaving New York? Locations of US Literary Publishing Since 1945." It processes the Library of Congress's "Books (All)" MARC records (2019) to track where US literary works (LC class `PS`) were published over time, with a focus on the New-York-City vs. elsewhere split. The end products are the figures in `viz/`.
+Research code supporting the essay "Leaving New York? Locations of US Literary Publishing Since 1945." It processes the Library of Congress's "Books (All)" MARC records (2019) to track where US literary works (LC class `PS`) were published over time, with a focus on the New-York-City vs. elsewhere split. The end products are the figures in `figures/outputs/`.
 
 The input dataset is **not** in the repo. Download the `.xml.gz` MARC files from <https://lccn.loc.gov/2020445551> and point the collection step at them.
 
@@ -23,8 +23,8 @@ There is no test suite, no build step, and no CI. Prefix any run command with `u
 ## Pipeline (run in order)
 
 1. **`imprints.data_collection`** — parse raw MARC `.xml.gz` → per-file `.pkl` lists of record dicts. Streams records with `lxml` `iterparse` and fans out across CPUs with `ProcessPoolExecutor`. Writes to `data/<class_range>/`. Keeps *all* records but flags those matching `--class_range`.
-2. **`imprints.data_cleaning`** — load all pickles → filter to the class range → one flat CSV. This is where normalization happens (see below). Output: `data/PS/data.csv`, the input every `viz/` script expects by default.
-3. **`viz/figN.py`** and **`viz/predict.py`** — read the cleaned CSV and emit `viz/figN.png` (and `predict.png`). Each is a standalone `argparse` script defaulting to `data/PS/data.csv` in / `viz/<name>.png` out. `predict.py` fits the `statsmodels` linear model cited inline.
+2. **`imprints.data_cleaning`** — load all pickles → filter to the class range → one flat CSV. This is where normalization happens (see below). Output: `data/PS/data.csv`, the input every figure script expects by default.
+3. **`figures/scripts/figN.py`** and **`figures/scripts/predict.py`** — read the cleaned CSV and emit `figures/outputs/<name>.{png,svg,pdf}`. Each is a standalone `argparse` script defaulting to `data/PS/data.csv` in / `figures/outputs/<name>.png` out (the SVG/PDF siblings are derived from the stem). `predict.py` fits the `statsmodels` linear model cited inline. `figures/scripts/make_figures.py` regenerates all of them; shared plot defaults (font, 600 DPI, grayscale, multi-format save) live in `figures/scripts/style.py`.
 
 Helper modules: `imprints.get_unique_places` (dump sorted unique `places_clean`, used to build the NYC variant list) and `imprints.repeats` (% of LCCNs appearing more than once).
 

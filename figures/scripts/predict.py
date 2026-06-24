@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Predict PS-class imprint share in a city and visualize the trend."""
-import os
+
 import argparse
 from pathlib import Path
 
@@ -9,12 +9,16 @@ import numpy as np
 import matplotlib.pyplot as plt
 import statsmodels.api as sm
 
-DEFAULT_INPUT = Path(__file__).resolve().parents[1] / "data/PS/data.csv"
-DEFAULT_OUTPUT = Path(__file__).resolve().parent / "predict.png"
+import style
+
+DEFAULT_INPUT = Path(__file__).resolve().parents[2] / "data/PS/data.csv"
+DEFAULT_OUTPUT = Path(__file__).resolve().parents[1] / "outputs/predict.png"
+
 
 def load_data(csv_path: str) -> pd.DataFrame:
     """Load cleaned imprint data from CSV."""
     return pd.read_csv(csv_path)
+
 
 def compute_city_share(
     df: pd.DataFrame,
@@ -39,6 +43,7 @@ def compute_city_share(
     pct = grouped.div(grouped.sum(axis=1), axis=0) * 100
     pct.index = pct.index.astype(int)
     return pct
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -71,13 +76,13 @@ def main():
         "--predict-year",
         type=int,
         default=2000,
-        help="Year to predict percentage (default: 2000)", 
+        help="Year to predict percentage (default: 2000)",
     )
     parser.add_argument(
         "--output",
         type=Path,
         default=DEFAULT_OUTPUT,
-        help="Output file path for the figure (default: ./viz/ps_predict.png)",
+        help="Output file path for the figure (default: figures/outputs/predict.png)",
     )
     args = parser.parse_args()
 
@@ -100,7 +105,9 @@ def main():
     if np.allclose(pct_sum.dropna(), 100.0, atol=1e-6):
         print("Sanity check: annual location percentages sum to ~100%.")
     else:
-        print("Warning: Percentages do not sum to 100 for some years; review input data.")
+        print(
+            "Warning: Percentages do not sum to 100 for some years; review input data."
+        )
 
     fit_df = (
         pd.DataFrame({"year": years, "pct_city": pct_city.values})
@@ -126,8 +133,12 @@ def main():
 
     fit_year_start = int(fit_df["year"].min())
     fit_year_end = peak_year
-    print(f"Peak share year: {peak_year} (value: {fit_df.loc[peak_idx, 'pct_city']:.2f}%)")
-    print(f"Fitting linear model from {fit_year_start} to {fit_year_end} (upward trend segment)")
+    print(
+        f"Peak share year: {peak_year} (value: {fit_df.loc[peak_idx, 'pct_city']:.2f}%)"
+    )
+    print(
+        f"Fitting linear model from {fit_year_start} to {fit_year_end} (upward trend segment)"
+    )
 
     # Handle constant series separately to avoid statsmodels warnings
     is_constant = fit_df["pct_city"].nunique() == 1
@@ -149,7 +160,7 @@ def main():
         slope = model.params["year"]
         intercept = model.params["const"]
         r2 = model.rsquared
-        residual_se = model.mse_resid ** 0.5
+        residual_se = model.mse_resid**0.5
         print(f"Slope: {slope:.4f}")
         print(f"Intercept: {intercept:.4f}")
         print(f"R^2 score: {r2:.4f}")
@@ -170,15 +181,21 @@ def main():
         f"(95% CI: {ci_lower:.2f}%, {ci_upper:.2f}%)"
     )
 
-    observed_value = float(pct_city.get(args.predict_year)) if args.predict_year in pct_city.index else float("nan")
+    observed_value = (
+        float(pct_city.get(args.predict_year))
+        if args.predict_year in pct_city.index
+        else float("nan")
+    )
     if np.isnan(observed_value):
-        print(f"Observed percentage in {args.predict_year}: unavailable (no data for that year).")
+        print(
+            f"Observed percentage in {args.predict_year}: unavailable (no data for that year)."
+        )
     else:
         print(f"Observed percentage in {args.predict_year}: {observed_value:.2f}%")
 
     # Plot data and model
-    plt.figure(dpi=600)
-    plt.style.use("tableau-colorblind10")
+    style.apply_style()
+    plt.figure()
     plt.plot(years, pct_city, label="LC MDS Data")
     plt.plot(
         fit_df["year"],
@@ -232,12 +249,10 @@ def main():
     plt.tight_layout()
 
     if args.output:
-        output_dir = args.output.parent
-        os.makedirs(output_dir, exist_ok=True)
-        plt.savefig(args.output, dpi=600)
-        print(f"Saved figure to: {args.output}")
+        style.save_figure(args.output)
     else:
         plt.show()
+
 
 if __name__ == "__main__":
     main()

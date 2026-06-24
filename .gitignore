@@ -1,5 +1,9 @@
 # .gitignore
 data/
+
+# Generated figure outputs (regenerate with figures/scripts/make_figures.py)
+figures/outputs/
+
 *.ipynb_checkpoints
 __pycache__/
 .env/

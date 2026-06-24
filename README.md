@@ -55,15 +55,21 @@ uv run pytest
 
 ## Visualizations and reported figures
 
-Scripts to create plots and figures reported inline are in the `viz/` directory, and can be regenerated like so:
+Scripts to create plots and figures reported inline live in `figures/scripts/`. Regenerate them all at once:
 
 ```bash
-python viz/fig1.py
+python figures/scripts/make_figures.py
+```
+
+or run an individual figure:
+
+```bash
+python figures/scripts/fig1.py
 ```
 
 By default, they assume that you have placed the outputs of `data_collection` and `data_cleaning` in `data/PS/data.csv`
 
-Generated figures are placed in `viz/` by default.
+Generated figures are written to `figures/outputs/` by default, each as PNG, SVG, and PDF. Shared plotting defaults (Helvetica Now Micro font, 600 DPI, grayscale style, output formats) live in `figures/scripts/style.py`.
 
 `predict.py` creates the linear model referenced inline, as well as a figure that is not included in the article.
 

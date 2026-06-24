@@ -3,15 +3,18 @@
 Generate a stacked area plot showing the percentage of PS-class imprints
 published in New York vs. other locations over time.
 """
-import os
+
 import argparse
 from pathlib import Path
 
 import pandas as pd
 import matplotlib.pyplot as plt
 
-DEFAULT_INPUT = Path(__file__).resolve().parents[1] / "data/PS/data.csv"
-DEFAULT_OUTPUT = Path(__file__).resolve().parent / "fig1.png"
+import style
+
+DEFAULT_INPUT = Path(__file__).resolve().parents[2] / "data/PS/data.csv"
+DEFAULT_OUTPUT = Path(__file__).resolve().parents[1] / "outputs/fig1.png"
+
 
 def load_data(csv_path: str) -> pd.DataFrame:
     """Load cleaned imprint data from CSV."""
@@ -70,8 +73,8 @@ def plot_area(
     include_ci: bool = False,
 ) -> None:
     """Plot a stacked area chart of city vs other locations and save or show."""
-    fig, ax = plt.subplots(dpi=600)
-    plt.style.use("grayscale")
+    style.apply_style()
+    fig, ax = plt.subplots()
     pct_city = pct_df[1]
     years = pct_city.index.values
 
@@ -82,15 +85,12 @@ def plot_area(
 
     ax.plot(years, pct_city, color="C0")
     ax.axhline(50, color="gray", linestyle="dotted", linewidth=1)
-    ax.grid(True, which="both", linestyle="dashed", linewidth=0.5, alpha=0.3)
 
     ax.set_xlabel("Year")
     ax.set_ylabel("% PS works published in " + city)
     plt.tight_layout()
     if output_path:
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
-        plt.savefig(output_path)
-        print(f"Saved figure to: {output_path}")
+        style.save_figure(output_path)
     else:
         plt.show()
 
@@ -138,7 +138,7 @@ def main():
         "--output",
         type=Path,
         default=DEFAULT_OUTPUT,
-        help="Output file path for the figure (default: viz/ps_new_york_share.png)",
+        help="Output file path for the figure (default: figures/outputs/fig1.png)",
     )
     parser.add_argument(
         "--ci",
@@ -165,7 +165,9 @@ def main():
     pct_rounded = pct_city.round()
 
     first_at_least_50 = pct_rounded[pct_rounded >= 50]
-    year_first_at_least_50 = int(first_at_least_50.index.min()) if not first_at_least_50.empty else None
+    year_first_at_least_50 = (
+        int(first_at_least_50.index.min()) if not first_at_least_50.empty else None
+    )
 
     year_first_below_after_50 = None
     if year_first_at_least_50 is not None:
@@ -177,14 +179,25 @@ def main():
     year_lowest = int(pct_city.idxmin()) if not pct_city.empty else None
     pct_lowest = float(pct_city.loc[year_lowest]) if year_lowest is not None else None
     year_highest = int(pct_city.idxmax()) if not pct_city.empty else None
-    pct_highest = float(pct_city.loc[year_highest]) if year_highest is not None else None
+    pct_highest = (
+        float(pct_city.loc[year_highest]) if year_highest is not None else None
+    )
 
     print("First year NYC share >= 50% (rounded):", year_first_at_least_50)
-    print("First year NYC share falls below 50% after crossing:", year_first_below_after_50)
+    print(
+        "First year NYC share falls below 50% after crossing:",
+        year_first_below_after_50,
+    )
     print("Year with lowest NYC share:", year_lowest)
-    print("NYC share in that year (%):", None if pct_lowest is None else round(pct_lowest, 2))
+    print(
+        "NYC share in that year (%):",
+        None if pct_lowest is None else round(pct_lowest, 2),
+    )
     print("Year with highest NYC share:", year_highest)
-    print("NYC share in that year (%):", None if pct_highest is None else round(pct_highest, 2))
+    print(
+        "NYC share in that year (%):",
+        None if pct_highest is None else round(pct_highest, 2),
+    )
 
     plot_area(
         pct,

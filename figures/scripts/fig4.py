@@ -5,8 +5,10 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import pandas as pd
 
-DEFAULT_INPUT = Path(__file__).resolve().parents[1] / "data/PS/data.csv"
-DEFAULT_OUTPUT = Path(__file__).resolve().parent / "fig4.png"
+import style
+
+DEFAULT_INPUT = Path(__file__).resolve().parents[2] / "data/PS/data.csv"
+DEFAULT_OUTPUT = Path(__file__).resolve().parents[1] / "outputs/fig4.png"
 YEAR_START = 1900
 YEAR_END = 2010
 
@@ -37,23 +39,14 @@ def compute_work_counts(df: pd.DataFrame) -> pd.Series:
     filtered["year_min"] = filtered["year_min"].astype(int)
 
     if "lccn" in filtered.columns:
-        lccn_clean = (
-            filtered["lccn"]
-            .astype(str)
-            .str.strip()
-            .replace("", pd.NA)
-        )
+        lccn_clean = filtered["lccn"].astype(str).str.strip().replace("", pd.NA)
         filtered = filtered.assign(lccn_clean=lccn_clean)
         counts = (
             filtered.dropna(subset=["lccn_clean"])
             .groupby("year_min")["lccn_clean"]
             .nunique()
         )
-        missing = (
-            filtered[filtered["lccn_clean"].isna()]
-            .groupby("year_min")
-            .size()
-        )
+        missing = filtered[filtered["lccn_clean"].isna()].groupby("year_min").size()
         return counts.add(missing, fill_value=0)
 
     return filtered.groupby("year_min").size()
@@ -85,7 +78,7 @@ def main() -> None:
         "--output",
         type=Path,
         default=DEFAULT_OUTPUT,
-        help="Output file path for the figure (default: viz/fig4.png)",
+        help="Output file path for the figure (default: figures/outputs/fig4.png)",
     )
     args = parser.parse_args()
 
@@ -94,21 +87,20 @@ def main() -> None:
     values = works_per_publisher.to_numpy()
 
     if works_per_publisher.empty:
-        raise ValueError(f"No publisher/work records between {YEAR_START} and {YEAR_END}.")
+        raise ValueError(
+            f"No publisher/work records between {YEAR_START} and {YEAR_END}."
+        )
 
-    plt.figure(dpi=600)
-    plt.style.use("grayscale")
+    style.apply_style()
+    plt.figure()
     plt.plot(years, values, color="C0")
     plt.xlabel("Year")
     plt.ylabel("Average PS works per PS publisher")
-    plt.grid(True, which="both", linestyle="--", linewidth=0.5, color="gray", alpha=0.3)
     ymax = values.max()
     upper = ymax * 1.05 if ymax > 0 else 1.0
     plt.ylim(0, upper)
     plt.tight_layout()
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    plt.savefig(args.output, dpi=600)
-    print(f"Saved works-per-publisher plot to: {args.output}")
+    style.save_figure(args.output)
 
 
 if __name__ == "__main__":
