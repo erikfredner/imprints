@@ -29,16 +29,64 @@ def parse_records(file_path):
         for event, elem in context:
             if elem.tag == f"{NS_MARC}record":
                 yield elem
+                # Free the record *and* drop already-processed siblings so the
+                # root does not accumulate emptied <record> nodes across a
+                # multi-GB file. Without this, memory grows unbounded.
                 elem.clear()
+                parent = elem.getparent()
+                if parent is not None:
+                    while elem.getprevious() is not None:
+                        del parent[0]
 
 
-def extract_subfields(record, tag, subfield_code, ns):
-    return [
-        subfield.text
-        for subfield in record.findall(
-            f'marc:datafield[@tag="{tag}"]/marc:subfield[@code="{subfield_code}"]', ns
-        )
-    ]
+def _local_name(tag):
+    """Strip the namespace from a fully-qualified lxml tag."""
+    return tag.rpartition("}")[2] if isinstance(tag, str) else tag
+
+
+def collect_subfields(record):
+    """Walk a record's datafields once and bucket the subfields we need.
+
+    Returns a dict keyed by (tag, subfield_code) -> list of non-empty texts,
+    plus the special key ("264", code, "pub") restricted to publication
+    indicators. This single pass replaces ~10 namespaced findall() calls per
+    record, which matters at dataset scale.
+
+    For 264, the 2nd indicator distinguishes the function of the field
+    (0=production, 1=publication, 2=distribution, 3=manufacture,
+    4=copyright). We keep place ($a) and publisher ($b) only for publication
+    (blank or "1"); $c dates are kept regardless because a copyright year is a
+    valid publication-year proxy.
+    """
+    buckets = {}
+    for field in record:
+        if _local_name(field.tag) != "datafield":
+            continue
+        tag = field.get("tag")
+        if tag not in ("010", "050", "100", "245", "260", "264"):
+            continue
+        ind2 = field.get("ind2", " ")
+        is_pub_264 = tag != "264" or ind2 in (" ", "1")
+        for sub in field:
+            if _local_name(sub.tag) != "subfield":
+                continue
+            text = sub.text
+            if text is None or not text.strip():
+                continue
+            code = sub.get("code")
+            # Restrict 264 place/publisher to publication-function fields.
+            if tag == "264" and code in ("a", "b") and not is_pub_264:
+                continue
+            buckets.setdefault((tag, code), []).append(text)
+    return buckets
+
+
+def _dedup(*lists):
+    """Order-preserving concat + dedup of several lists."""
+    merged = []
+    for lst in lists:
+        merged.extend(lst)
+    return list(dict.fromkeys(merged))
 
 
 def parse_class(class_str):
@@ -63,7 +111,7 @@ def matches_range(classification, prefix, num_min=None, num_max=None):
     if not classification or not isinstance(classification, str):
         return False
     cls, num = parse_class(classification.strip())
-    if not cls or not classification.strip().startswith(prefix):
+    if not cls or cls != prefix:
         return False
     if num_min is not None and (num is None or num < num_min):
         return False
@@ -101,22 +149,18 @@ def parse_range_spec(range_str):
 
 
 def process_record(record, class_range):
-    ns = {"marc": "http://www.loc.gov/MARC21/slim"}
-    classifications = extract_subfields(record, "050", "a", ns)
+    buckets = collect_subfields(record)
+    classifications = buckets.get(("050", "a"), [])
     matches_class_range = filter_classification(classifications, class_range)
 
-    lccn = extract_subfields(record, "010", "a", ns)
-    personal_name_100 = extract_subfields(record, "100", "a", ns)
-    title = extract_subfields(record, "245", "a", ns)
-    years_260 = extract_subfields(record, "260", "c", ns)
-    years_264 = extract_subfields(record, "264", "c", ns)
-    places_260 = extract_subfields(record, "260", "a", ns)
-    places_264 = extract_subfields(record, "264", "a", ns)
-    publisher_260 = extract_subfields(record, "260", "b", ns)
-    publisher_264 = extract_subfields(record, "264", "b", ns)
-    years = list(dict.fromkeys(years_260 + years_264))
-    places = list(dict.fromkeys(places_260 + places_264))
-    publishers = list(dict.fromkeys(publisher_260 + publisher_264))
+    lccn = buckets.get(("010", "a"), [])
+    personal_name_100 = buckets.get(("100", "a"), [])
+    title = buckets.get(("245", "a"), [])
+    # 260 has no function indicator; its publication 264 counterparts were
+    # filtered in collect_subfields. Merge order-preserving, deduped.
+    years = _dedup(buckets.get(("260", "c"), []), buckets.get(("264", "c"), []))
+    places = _dedup(buckets.get(("260", "a"), []), buckets.get(("264", "a"), []))
+    publishers = _dedup(buckets.get(("260", "b"), []), buckets.get(("264", "b"), []))
 
     data = {
         "lccn": lccn[0] if lccn else None,
@@ -143,7 +187,7 @@ def process_single_file(args):
             all_data.append(data)
         with open(output_file, "wb") as f:
             pickle.dump(all_data, f, protocol=pickle.HIGHEST_PROTOCOL)
-        return f"Processed: {os.path.basename(file_path)} ({len(all_data)} records, {time.time()-start_time:.1f}s)"
+        return f"Processed: {os.path.basename(file_path)} ({len(all_data)} records, {time.time() - start_time:.1f}s)"
     except Exception as e:
         return f"Error processing {os.path.basename(file_path)}: {e}"
 

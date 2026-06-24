@@ -29,7 +29,7 @@ def matches_range(classification, prefix, num_min=None, num_max=None):
     if not classification or not isinstance(classification, str):
         return False
     cls, num = parse_class(classification.strip())
-    if not cls or not classification.strip().startswith(prefix):
+    if not cls or cls != prefix:
         return False
     if num_min is not None and (num is None or num < num_min):
         return False
@@ -150,7 +150,7 @@ def get_decade(year):
     try:
         year = int(year)
         return (year // 10) * 10 if year > 0 else None
-    except:
+    except (TypeError, ValueError):
         return None
 
 
@@ -206,6 +206,43 @@ def normalize_places(value):
     return [value]
 
 
+# Separators that join distinct cities in a single 260/264 $a, e.g.
+# "Boston and New York", "New York; London", "New York & London". Comma is
+# deliberately excluded: it usually qualifies a single place ("Flushing, NY").
+_PLACE_SPLIT_RE = re.compile(r"\s*;\s*|\s*&\s*|\s+and\s+", re.IGNORECASE)
+
+
+def split_places(value):
+    """Split a single place string into component cities.
+
+    Co-publications list multiple cities in one subfield; splitting them lets
+    an NYC component be recognized instead of being lost inside a compound
+    string like "Boston and New York". None/blank passes through as [None].
+    """
+    if value is None:
+        return [None]
+    try:
+        if pd.isna(value):
+            return [None]
+    except Exception:
+        pass
+    parts = [p.strip() for p in _PLACE_SPLIT_RE.split(str(value))]
+    parts = [p for p in parts if p]
+    return parts or [None]
+
+
+def expand_places(value):
+    """Normalize a record's places value then split each into component cities.
+
+    Produces the list that `cleaning_pipeline` explodes into one row per city,
+    order-preserving and deduped. Missing places are preserved as [None].
+    """
+    expanded = []
+    for place in normalize_places(value):
+        expanded.extend(split_places(place))
+    return list(dict.fromkeys(expanded)) or [None]
+
+
 def load_pickles_to_dataframe(pickle_dir):
     """Load ALL pickles from directory & concat to single DataFrame."""
     all_data = []
@@ -252,9 +289,10 @@ def cleaning_pipeline(df, class_range):
     df["decade"] = df["year_min"].map(get_decade)
     df["publisher_clean"] = df["publisher_first"].map(clean_string)
 
-    # Explode on 'places' (each place gets its own row)
+    # Explode on 'places' (each component city gets its own row). Compound
+    # subfields like "Boston and New York" are split first so NYC is counted.
     if "places" in df.columns:
-        df["places"] = df["places"].map(normalize_places)
+        df["places"] = df["places"].map(expand_places)
         df = df.explode("places").reset_index(drop=True)
     # Always compute these AFTER exploding
     df["places_clean"] = df["places"].map(clean_string)

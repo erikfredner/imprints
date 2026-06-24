@@ -34,6 +34,25 @@ python -m imprints.data_cleaning \
     --class_range PS
 ```
 
+Two normalization choices about *place of publication* are worth noting:
+
+- **Only publication places are counted.** MARC `264` fields are typed by their
+  second indicator (production, publication, distribution, manufacture,
+  copyright). `data_collection` keeps the place (`$a`) and publisher (`$b`)
+  only from publication fields (`264` with indicator blank or `1`, and all of
+  `260`), so a printer's or distributor's city is not mistaken for a place of
+  publication. Copyright/other dates (`$c`) are still used when estimating the
+  publication year.
+- **Compound places are split.** A single subfield often lists co-publication
+  cities together (e.g. `"Boston and New York"`). `data_cleaning` splits these
+  on `;`, `&`, and the word `and` so that a New York component is recognized.
+
+## Tests
+
+```bash
+uv run pytest
+```
+
 ## Visualizations and reported figures
 
 Scripts to create plots and figures reported inline are in the `viz/` directory, and can be regenerated like so:
