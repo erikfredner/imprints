@@ -73,6 +73,33 @@ Generated figures are written to `figures/outputs/` by default, each as PNG, SVG
 
 `predict.py` creates the linear model referenced inline, as well as a figure that is not included in the article.
 
+`city_growth.py` asks whether NYC's *falling share* after its ~1958 peak is
+mostly a denominator effect — everywhere else growing rather than NYC shrinking.
+It ranks and plots (raw counts vs. year, default 1950–2010) the top publishing
+locations *outside* NYC.
+
+```bash
+python figures/scripts/city_growth.py   # top non-NYC cities by record count
+```
+
+It writes **two** variants: `city_growth.png` (all publishers) and
+`city_growth_no_large_print.png`. The raw counts are dominated by a handful of
+large-print/reprint houses clustered in Waterville/Thorndike, ME (Thorndike
+Press, G.K. Hall, Wheeler, Center Point, Five Star, …), which reprint existing
+titles rather than originate literary publishing; the second variant drops them
+(see `LARGE_PRINT_MARKERS`) so the underlying trend in literary publishing is
+legible.
+
+Place strings encode the state inconsistently (`louisville ky`, `calif`,
+`garden city n y`, `ohio`, or no state at all for foreign cities like `london`),
+so the script splits city from state with a curated token map (`STATE_TOKENS`)
+and folds obvious typos into their canonical spelling via string similarity
+(`difflib`). Both steps are first-pass heuristics: the run prints the fuzzy
+merges (with scores) and the most common *unrecognized* trailing tokens so the
+map and threshold can be refined, and it flags city names that are really
+several different places (e.g. Portland OR vs. ME) that each grow. The full
+rankings are also written to `figures/outputs/city_growth*_ranking.csv`.
+
 ## PS broken down by numerical sub-range
 
 Three figures (`fig5`–`fig7`) break PS apart by its Library of Congress numerical

@@ -19,6 +19,7 @@ SCRIPTS = [
     "fig5.py",
     "fig6.py",
     "fig7.py",
+    "city_growth.py",
     "predict.py",
 ]
 
