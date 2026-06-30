@@ -157,7 +157,7 @@ def main():
         other_counts,
         label="Other",
         color=style.COLOR_OTHER,
-        linestyle="--",
+        linestyle="-",
         marker=style.MARKERS[1],
         markevery=10,
         markersize=4,
