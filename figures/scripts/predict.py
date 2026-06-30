@@ -14,6 +14,10 @@ import style
 DEFAULT_INPUT = Path(__file__).resolve().parents[2] / "data/PS/data.csv"
 DEFAULT_OUTPUT = Path(__file__).resolve().parents[1] / "outputs/predict.png"
 
+#: ``city_group`` value for records lacking a place of publication. Dropped so the
+#: NYC share is NYC / (NYC + Other), matching the other figures.
+NO_PLACE = "No place of publication"
+
 
 def load_data(csv_path: str) -> pd.DataFrame:
     """Load cleaned imprint data from CSV."""
@@ -31,8 +35,9 @@ def compute_city_share(
     Returns a DataFrame indexed by year with two columns: 0 = other locations, 1 = city.
     """
     df = df.copy()
-    df["in_city"] = (df.get("city_group") == city).astype(int)
-    mask = df.get("year_min").between(start_year, end_year)
+    df = df[df["city_group"] != NO_PLACE]
+    df["in_city"] = (df["city_group"] == city).astype(int)
+    mask = df["year_min"].between(start_year, end_year)
     grouped = (
         df[mask]
         .groupby(["year_min", "in_city"])
