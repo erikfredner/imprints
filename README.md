@@ -73,6 +73,32 @@ Generated figures are written to `figures/outputs/` by default, each as PNG, SVG
 
 `predict.py` creates the linear model referenced inline, as well as a figure that is not included in the article.
 
+## PS broken down by numerical sub-range
+
+Three figures (`fig5`–`fig7`) break PS apart by its Library of Congress numerical
+sub-ranges (the "individual authors by period" ranges plus the genre/collection
+ranges) to ask whether the overall rise-then-fall story is uniform across PS, and
+whether the post-peak decline is a *within-range* effect or a *composition* effect.
+They read `data/PS/data.csv` directly (no extra build step) and bin records with
+the shared mapping in `imprints.ps_ranges`; the per-range NYC share is computed
+among placed imprints (`NYC / (NYC + Other)`), like the cross-range analysis.
+
+```bash
+python figures/scripts/fig5.py   # NYC share over time for the largest sub-ranges
+python figures/scripts/fig6.py   # composition of PS over time (two area charts)
+python figures/scripts/fig7.py   # how much of the decline is composition?
+```
+
+- **`fig5`** — one NYC-share line per featured range, labelled at the right edge
+  with its record count (`N`).
+- **`fig6`** — two stacked-area charts, `fig6_counts` (absolute records per range)
+  and `fig6_share` (the same normalized to 100% per year).
+- **`fig7`** — a shift-share decomposition of the peak-to-later change into
+  within / composition / interaction terms (with per-range composition
+  contributions and a confirming OLS) written to `fig7_decomposition.csv`, plus a
+  counterfactual figure comparing the actual NYC share to composition-frozen and
+  within-frozen trajectories.
+
 ## Cross-range comparison
 
 To ask whether PS's New-York-share pattern is particular to PS, general to LC, or

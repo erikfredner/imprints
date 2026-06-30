@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regenerate every figure (fig1-fig4 and predict) into figures/outputs/.
+"""Regenerate every figure (fig1-fig7 and predict) into figures/outputs/.
 
 Runs each figure script as a subprocess so each keeps its own argparse defaults
 and an isolated matplotlib state. Exits non-zero if any figure fails.
@@ -11,7 +11,16 @@ import sys
 from pathlib import Path
 
 SCRIPTS_DIR = Path(__file__).resolve().parent
-SCRIPTS = ["fig1.py", "fig2.py", "fig3.py", "fig4.py", "predict.py"]
+SCRIPTS = [
+    "fig1.py",
+    "fig2.py",
+    "fig3.py",
+    "fig4.py",
+    "fig5.py",
+    "fig6.py",
+    "fig7.py",
+    "predict.py",
+]
 
 
 def main() -> None:
