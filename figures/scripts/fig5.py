@@ -101,7 +101,8 @@ def main():
     ax.axhline(50, color=style.COLOR_REFERENCE, linestyle="dotted", linewidth=1)
     ax.set_xlim(YEAR_START, YEAR_END)
     ax.set_xlabel("Year")
-    ax.set_ylabel("% of placed PS works published in " + args.city)
+    ax.set_ylabel("Share of placed PS works published in " + args.city)
+    style.percent_yaxis(ax)
 
     # Right-edge direct labels in place of a legend.
     y0, y1 = ax.get_ylim()

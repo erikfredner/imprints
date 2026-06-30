@@ -245,7 +245,8 @@ def main():
     )
     plt.title(f"Predicted percentage of PS imprints published in {city_label}")
     plt.xlabel("Year")
-    plt.ylabel(f"Percentage in {city_label}")
+    plt.ylabel(f"Share in {city_label}")
+    style.percent_yaxis(ax)
     plt.legend(title=f"Published in {city_label}")
     plt.tight_layout()
 

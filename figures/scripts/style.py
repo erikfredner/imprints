@@ -11,6 +11,7 @@ from pathlib import Path
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
+import matplotlib.ticker as mticker
 from cycler import cycler
 
 #: Preferred font, with automatic fallback to matplotlib's stock sans-serif.
@@ -86,6 +87,16 @@ def apply_style(base: str = "default") -> None:
     mpl.rcParams["figure.dpi"] = DPI
     mpl.rcParams["savefig.dpi"] = DPI
     mpl.rcParams["axes.prop_cycle"] = cycler(color=OKABE_ITO)
+
+
+def percent_yaxis(ax) -> None:
+    """Format an axis's y ticks as whole-number percents (e.g. ``50%``).
+
+    For axes whose values are already on a 0-100 scale (a share times 100).
+    Appends the ``%`` sign to each integer tick so the axis label can describe
+    the quantity without carrying a ``%`` of its own.
+    """
+    ax.yaxis.set_major_formatter(mticker.PercentFormatter(xmax=100, decimals=0))
 
 
 def save_figure(output_path) -> None:

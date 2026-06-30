@@ -60,7 +60,9 @@ def _output_paths(output: Path) -> tuple[Path, Path]:
     )
 
 
-def _plot_stack(matrix: pd.DataFrame, ylabel: str, output: Path) -> None:
+def _plot_stack(
+    matrix: pd.DataFrame, ylabel: str, output: Path, percent: bool = False
+) -> None:
     """Draw one stacked-area chart with right-edge band labels and save it."""
     style.apply_style()
     fig, ax = plt.subplots()
@@ -103,6 +105,8 @@ def _plot_stack(matrix: pd.DataFrame, ylabel: str, output: Path) -> None:
     ax.set_xlim(YEAR_START, YEAR_END)
     ax.set_xlabel("Year")
     ax.set_ylabel(ylabel)
+    if percent:
+        style.percent_yaxis(ax)
     fig.subplots_adjust(right=0.62)
     style.save_figure(output)
     plt.close(fig)
@@ -133,7 +137,7 @@ def main():
 
     totals = matrix.sum(axis=1).replace(0, np.nan)
     share = matrix.div(totals, axis=0) * 100
-    _plot_stack(share, "% of PS records", share_path)
+    _plot_stack(share, "Share of PS records", share_path, percent=True)
 
 
 if __name__ == "__main__":

@@ -153,6 +153,7 @@ def _spaghetti(df, keys, highlight, title, ylabel, out_path, window, smooth):
     ax.axhline(50, color=style.COLOR_REFERENCE, linestyle="dotted", linewidth=1)
     ax.set_xlabel("Year")
     ax.set_ylabel(ylabel)
+    style.percent_yaxis(ax)
     ax.set_title(title)
     ax.legend(loc="upper right", frameon=False)
     plt.tight_layout()
@@ -184,7 +185,8 @@ def _ps_vs_rest(special, out_path, window, smooth):
         ax.plot(years, p * 100, color=color, linewidth=1.8, label=label)
     ax.axhline(50, color=style.COLOR_REFERENCE, linestyle="dotted", linewidth=1)
     ax.set_xlabel("Year")
-    ax.set_ylabel("% imprints published in New York City")
+    ax.set_ylabel("Share of imprints published in New York City")
+    style.percent_yaxis(ax)
     ax.legend(loc="upper right", frameon=False)
     plt.tight_layout()
     style.save_figure(out_path)
@@ -209,10 +211,11 @@ def _small_multiples(subclass, letter, keys, out_path, window, smooth):
         ax.axhline(50, color=style.COLOR_REFERENCE, linestyle="dotted", linewidth=0.6)
         ax.set_title(key, fontsize=8)
         ax.tick_params(labelsize=6)
+        style.percent_yaxis(ax)
     for ax in axes[len(keys) :]:
         ax.set_visible(False)
     fig.supxlabel("Year")
-    fig.supylabel("% imprints in NYC (PS faint behind)")
+    fig.supylabel("Share of imprints in NYC (PS faint behind)")
     plt.tight_layout()
     style.save_figure(out_path)
     plt.close(fig)
@@ -248,7 +251,8 @@ def _crossing_50(df, keys, out_path, window, smooth, threshold=50.0):
         )
     ax.axhline(threshold, color=style.COLOR_REFERENCE, linestyle="dotted", linewidth=1)
     ax.set_xlabel("Year")
-    ax.set_ylabel("% imprints in NYC")
+    ax.set_ylabel("Share of imprints in NYC")
+    style.percent_yaxis(ax)
     ax.set_title(f"LC subclasses that ever reach {threshold:.0f}% NYC imprints")
     ax.legend(ncol=2, fontsize=6, loc="center left", bbox_to_anchor=(1.0, 0.5))
     plt.tight_layout()
@@ -273,7 +277,8 @@ def _ps_pz(df, out_path, window, smooth):
         )
     ax.axhline(50, color=style.COLOR_REFERENCE, linestyle="dotted", linewidth=1)
     ax.set_xlabel("Year")
-    ax.set_ylabel("% imprints in NYC")
+    ax.set_ylabel("Share of imprints in NYC")
+    style.percent_yaxis(ax)
     ax.legend(loc="upper right", frameon=False)
     plt.tight_layout()
     style.save_figure(out_path)
@@ -334,7 +339,7 @@ def main():
         sub_keys,
         "PS",
         "NYC imprint share by LC subclass",
-        "% imprints in NYC",
+        "Share of imprints in NYC",
         args.output_dir / "cross_range_subclass.png",
         args.window,
         args.smooth,
@@ -344,7 +349,7 @@ def main():
         letter_keys,
         "P",
         "NYC imprint share by top-level LC class",
-        "% imprints in NYC",
+        "Share of imprints in NYC",
         args.output_dir / "cross_range_top.png",
         args.window,
         args.smooth,

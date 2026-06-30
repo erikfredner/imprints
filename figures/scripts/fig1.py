@@ -87,7 +87,8 @@ def plot_area(
     ax.axhline(50, color=style.COLOR_REFERENCE, linestyle="dotted", linewidth=1)
 
     ax.set_xlabel("Year")
-    ax.set_ylabel("% PS works published in " + city)
+    ax.set_ylabel("Share of PS works published in " + city)
+    style.percent_yaxis(ax)
     plt.tight_layout()
     if output_path:
         style.save_figure(output_path)
