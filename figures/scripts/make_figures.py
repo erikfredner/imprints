@@ -15,6 +15,7 @@ SCRIPTS = [
     "fig1.py",
     "fig2.py",
     "fig3.py",
+    "nyc_and_publishers.py",
     "fig4.py",
     "fig5.py",
     "fig6.py",
