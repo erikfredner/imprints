@@ -38,6 +38,12 @@ def test_matches_range_rejects_longer_prefix():
     assert not dc.matches_range("PST", "PS")
 
 
+def test_matches_range_top_level_prefix_includes_subclasses():
+    assert dc.matches_range("PR6053", "P")
+    assert dc.matches_range("PS3553", "P")
+    assert not dc.matches_range("QA76", "P")
+
+
 def test_matches_range_accepts_list():
     assert dc.matches_range(["PZ3.J55", "PS2132"], "PS")
     assert not dc.matches_range(["PZ3.J55", "PR1234"], "PS")

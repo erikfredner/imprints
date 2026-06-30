@@ -54,6 +54,7 @@ def test_get_digits_for_class():
     assert cl.get_digits_for_class("PS3555.123", cr) == 3555
     assert cl.get_digits_for_class("PZ3.J55", cr) is None
     assert cl.get_digits_for_class(None, cr) is None
+    assert cl.get_digits_for_class("PS3555.123", cl.parse_range_spec("P")) == 3555
 
 
 # ---------------------- classification matching ----------------------
@@ -63,6 +64,9 @@ def test_matches_range_prefix_fix_mirrors_collection():
     assert cl.matches_range("PS3553", "PS")
     assert not cl.matches_range("PSA123", "PS")
     assert not cl.matches_range("PZ3.J55", "PS")
+    assert cl.matches_range("PR6053", "P")
+    assert cl.matches_range("PS3553", "P")
+    assert not cl.matches_range("QA76", "P")
 
 
 def test_filter_classifications():
@@ -91,8 +95,27 @@ def test_normalize_places():
 
 def test_split_places_compound():
     assert cl.split_places("Boston and New York :") == ["Boston", "New York :"]
+    assert cl.split_places("Boston and Chicago") == ["Boston", "Chicago"]
     assert cl.split_places("New York; London") == ["New York", "London"]
     assert cl.split_places("New York & London") == ["New York", "London"]
+    assert cl.split_places("Philadelphia & London,") == ["Philadelphia", "London,"]
+    # Square brackets mark supplied MARC text, not a single grouped place.
+    assert cl.split_places("[New York and London]") == ["New York", "London"]
+    assert cl.split_places("[Harmondsworth; Baltimore]") == [
+        "Harmondsworth",
+        "Baltimore",
+    ]
+    # Conjunctions within one place/address must not manufacture extra rows.
+    assert cl.split_places("[Trinidad and Tobago, West Indies?]") == [
+        "[Trinidad and Tobago, West Indies?]"
+    ]
+    assert cl.split_places("[Antigua and Barbuda]") == ["[Antigua and Barbuda]"]
+    assert cl.split_places("New York (Fourth Avenue and Twenty-third Street)") == [
+        "New York (Fourth Avenue and Twenty-third Street)"
+    ]
+    assert cl.split_places(
+        "New York (Fourth Avenue and Twenty-third Street) and London"
+    ) == ["New York (Fourth Avenue and Twenty-third Street)", "London"]
     # Comma is NOT a separator (qualifies a single place).
     assert cl.split_places("Flushing, NY") == ["Flushing, NY"]
     # "and" inside a word must not split.
@@ -107,6 +130,15 @@ def test_expand_places_dedup_and_missing():
     ]
     assert cl.expand_places([]) == [None]
     assert cl.expand_places(None) == [None]
+
+
+def test_expand_places_bracketed_city_list_recovers_nyc():
+    places = cl.expand_places("[New York and London]")
+    assert places == ["New York", "London"]
+    assert [cl.get_target_cities(place) for place in places] == [
+        "New York City",
+        "Other",
+    ]
 
 
 def test_get_target_cities():
@@ -161,3 +193,26 @@ def test_cleaning_pipeline_year_min_uses_publisher_year():
     df = pd.DataFrame([_record(["PS3553"], ["New York :"], [])])
     out = cl.cleaning_pipeline(df, cl.parse_range_spec("PS"))
     assert (out["year_min"] == 1980).all()
+
+
+def test_cleaning_pipeline_top_level_class_and_single_place_conjunctions():
+    df = pd.DataFrame(
+        [
+            _record(
+                ["PS3553"],
+                ["[Trinidad and Tobago, West Indies?]"],
+                ["1980"],
+            ),
+            _record(
+                ["PR6053"],
+                ["New York (Fourth Avenue and Twenty-third Street)"],
+                ["1980"],
+            ),
+        ]
+    )
+
+    out = cl.cleaning_pipeline(df, cl.parse_range_spec("P"))
+
+    assert out["target_classification"].tolist() == ["PS3553", "PR6053"]
+    assert out["class_digits"].tolist() == [3553, 6053]
+    assert len(out) == 2

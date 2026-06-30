@@ -22,8 +22,12 @@ def test_parse_range_spec_matches_across_modules():
 
 
 def test_matches_range_matches_across_modules():
-    for s in SAMPLES:
-        assert dc.matches_range(s, "PS") == cl.matches_range(s, "PS"), s
+    for prefix in ("P", "PS"):
+        for s in SAMPLES:
+            assert dc.matches_range(s, prefix) == cl.matches_range(s, prefix), (
+                s,
+                prefix,
+            )
 
 
 def test_nyc_variants_are_clean_string_idempotent():

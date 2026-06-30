@@ -111,7 +111,13 @@ def matches_range(classification, prefix, num_min=None, num_max=None):
     if not classification or not isinstance(classification, str):
         return False
     cls, num = parse_class(classification.strip())
-    if not cls or cls != prefix:
+    # A one-letter range is a top-level LC class and includes its subclasses
+    # (e.g. P includes PR and PS).  Longer ranges identify a complete alpha
+    # subclass, so PS must not also admit malformed/other classes such as PSA.
+    prefix_matches = bool(cls) and (
+        cls == prefix or (len(prefix) == 1 and cls.startswith(prefix))
+    )
+    if not prefix_matches:
         return False
     if num_min is not None and (num is None or num < num_min):
         return False

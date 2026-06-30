@@ -29,7 +29,13 @@ def matches_range(classification, prefix, num_min=None, num_max=None):
     if not classification or not isinstance(classification, str):
         return False
     cls, num = parse_class(classification.strip())
-    if not cls or cls != prefix:
+    # A one-letter range is a top-level LC class and includes its subclasses
+    # (e.g. P includes PR and PS).  Longer ranges identify a complete alpha
+    # subclass, so PS must not also admit malformed/other classes such as PSA.
+    prefix_matches = bool(cls) and (
+        cls == prefix or (len(prefix) == 1 and cls.startswith(prefix))
+    )
+    if not prefix_matches:
         return False
     if num_min is not None and (num is None or num < num_min):
         return False
@@ -90,8 +96,12 @@ def get_digits_for_class(classification, class_range):
         pass
     s = str(classification).strip()
     prefix = class_range["prefix"]
-    m = re.match(rf"^{prefix}(\d+)", s)
-    return int(m.group(1)) if m else None
+    minval = class_range.get("min")
+    maxval = class_range.get("max")
+    if not matches_range(s, prefix, minval, maxval):
+        return None
+    _, num = parse_class(s)
+    return num
 
 
 def get_year_int(year):
@@ -206,18 +216,35 @@ def normalize_places(value):
     return [value]
 
 
-# Separators that join distinct cities in a single 260/264 $a, e.g.
-# "Boston and New York", "New York; London", "New York & London". Comma is
-# deliberately excluded: it usually qualifies a single place ("Flushing, NY").
+# Separators at the top level join distinct cities in a 260/264 $a, e.g.
+# "Boston and New York" or "New York; London". Parentheses/braces group an
+# address, but MARC square brackets merely mark cataloger-supplied text and do
+# not suppress place separators.
 _PLACE_SPLIT_RE = re.compile(r"\s*;\s*|\s*&\s*|\s+and\s+", re.IGNORECASE)
+_COMPOUND_GEOGRAPHIC_NAME_RE = re.compile(
+    r"\b(?:"
+    r"antigua\s+(?:and|&)\s+barbuda|"
+    r"bosnia\s+(?:and|&)\s+herzegovina|"
+    r"sao\s+tome\s+(?:and|&)\s+principe|"
+    r"st\.?\s+kitts\s+(?:and|&)\s+nevis|"
+    r"saint\s+kitts\s+(?:and|&)\s+nevis|"
+    r"st\.?\s+vincent\s+(?:and|&)\s+(?:the\s+)?grenadines|"
+    r"saint\s+vincent\s+(?:and|&)\s+(?:the\s+)?grenadines|"
+    r"trinidad\s+(?:and|&)\s+tobago|"
+    r"turks\s+(?:and|&)\s+caicos|"
+    r"wallis\s+(?:and|&)\s+futuna"
+    r")\b",
+    re.IGNORECASE,
+)
 
 
 def split_places(value):
-    """Split a single place string into component cities.
+    """Split top-level city-list separators while preserving nested text.
 
     Co-publications list multiple cities in one subfield; splitting them lets
     an NYC component be recognized instead of being lost inside a compound
-    string like "Boston and New York". None/blank passes through as [None].
+    string like "Boston and New York". Conjunctions inside parentheses or
+    braces remain part of one place. None/blank passes through as [None].
     """
     if value is None:
         return [None]
@@ -226,8 +253,39 @@ def split_places(value):
             return [None]
     except Exception:
         pass
-    parts = [p.strip() for p in _PLACE_SPLIT_RE.split(str(value))]
-    parts = [p for p in parts if p]
+    original_text = str(value).strip()
+    text = original_text
+    if text.startswith("[") and text.endswith("]"):
+        text = text[1:-1].strip()
+    parts = []
+    start = cursor = 0
+    nesting = 0
+    did_split = False
+    compound_name_spans = [
+        match.span() for match in _COMPOUND_GEOGRAPHIC_NAME_RE.finditer(text)
+    ]
+    for match in _PLACE_SPLIT_RE.finditer(text):
+        for char in text[cursor : match.start()]:
+            if char in "({":
+                nesting += 1
+            elif char in ")}":
+                nesting = max(0, nesting - 1)
+        inside_compound_name = any(
+            compound_start <= match.start() and match.end() <= compound_end
+            for compound_start, compound_end in compound_name_spans
+        )
+        if nesting == 0 and not inside_compound_name:
+            part = text[start : match.start()].strip()
+            if part:
+                parts.append(part)
+            start = match.end()
+            did_split = True
+        cursor = match.end()
+    if not did_split:
+        return [original_text] if original_text else [None]
+    final_part = text[start:].strip()
+    if final_part:
+        parts.append(final_part)
     return parts or [None]
 
 
