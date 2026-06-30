@@ -143,9 +143,14 @@ def _spaghetti(df, keys, highlight, title, ylabel, out_path, window, smooth):
             ax.plot(s.index, s.values, color="0.75", linewidth=0.6, zorder=1)
     hl = share_series(df, highlight, window, smooth)
     ax.plot(
-        hl.index, hl.values, color="black", linewidth=2.0, zorder=3, label=highlight
+        hl.index,
+        hl.values,
+        color=style.COLOR_NYC,
+        linewidth=2.0,
+        zorder=3,
+        label=highlight,
     )
-    ax.axhline(50, color="gray", linestyle="dotted", linewidth=1)
+    ax.axhline(50, color=style.COLOR_REFERENCE, linestyle="dotted", linewidth=1)
     ax.set_xlabel("Year")
     ax.set_ylabel(ylabel)
     ax.set_title(title)
@@ -160,7 +165,7 @@ def _ps_vs_rest(special, out_path, window, smooth):
     style.apply_style()
     fig, ax = plt.subplots()
     z = 1.96
-    for key, color in (("PS", "black"), ("not_PS", "0.5")):
+    for key, color in (("PS", style.COLOR_NYC), ("not_PS", style.COLOR_OTHER)):
         sub = special[special["key"] == key].set_index("year_min").sort_index()
         counts = sub[["nyc", "other"]]
         if smooth:
@@ -177,7 +182,7 @@ def _ps_vs_rest(special, out_path, window, smooth):
         )
         label = "PS" if key == "PS" else "Rest of dataset (not PS)"
         ax.plot(years, p * 100, color=color, linewidth=1.8, label=label)
-    ax.axhline(50, color="gray", linestyle="dotted", linewidth=1)
+    ax.axhline(50, color=style.COLOR_REFERENCE, linestyle="dotted", linewidth=1)
     ax.set_xlabel("Year")
     ax.set_ylabel("% imprints published in New York City")
     ax.legend(loc="upper right", frameon=False)
@@ -200,8 +205,8 @@ def _small_multiples(subclass, letter, keys, out_path, window, smooth):
         df = subclass if level == "subclass" else letter
         ax.plot(ps_share.index, ps_share.values, color="0.8", linewidth=1.0, zorder=1)
         s = share_series(df, key, window, smooth)
-        ax.plot(s.index, s.values, color="black", linewidth=1.2, zorder=2)
-        ax.axhline(50, color="gray", linestyle="dotted", linewidth=0.6)
+        ax.plot(s.index, s.values, color=style.COLOR_NYC, linewidth=1.2, zorder=2)
+        ax.axhline(50, color=style.COLOR_REFERENCE, linestyle="dotted", linewidth=0.6)
         ax.set_title(key, fontsize=8)
         ax.tick_params(labelsize=6)
     for ax in axes[len(keys) :]:
@@ -229,25 +234,19 @@ def _crossing_50(df, keys, out_path, window, smooth, threshold=50.0):
 
     style.apply_style()
     fig, ax = plt.subplots(figsize=(8, 5.5))
-    linestyles = ["-", "--", "-.", ":"]
-    markers = ["o", "s", "^", "D", "v", ">", "<", "p", "*", "X", "h", "P"]
     step = 15  # years between markers
     for i, key in enumerate(order):
         s = series[key]
-        ls = linestyles[(i // len(markers)) % len(linestyles)]
-        mk = markers[i % len(markers)]
         ax.plot(
             s.index,
             s.values,
-            color="black",
-            linestyle=ls,
             linewidth=0.9,
-            marker=mk,
             markersize=4,
             markevery=(i % step, step),
             label=key,
+            **style.series_style(i),
         )
-    ax.axhline(threshold, color="gray", linestyle="dotted", linewidth=1)
+    ax.axhline(threshold, color=style.COLOR_REFERENCE, linestyle="dotted", linewidth=1)
     ax.set_xlabel("Year")
     ax.set_ylabel("% imprints in NYC")
     ax.set_title(f"LC subclasses that ever reach {threshold:.0f}% NYC imprints")
@@ -261,20 +260,18 @@ def _ps_pz(df, out_path, window, smooth):
     """PS (US literature) vs PZ (fiction & juvenile belles lettres) NYC share."""
     style.apply_style()
     fig, ax = plt.subplots()
-    for key, ls, mk in (("PS", "-", "o"), ("PZ", "--", "s")):
+    for i, key in enumerate(("PS", "PZ")):
         s = share_series(df, key, window, smooth)
         ax.plot(
             s.index,
             s.values,
-            color="black",
-            linestyle=ls,
             linewidth=1.4,
-            marker=mk,
             markersize=4,
             markevery=(0, 12),
             label=key,
+            **style.series_style(i),
         )
-    ax.axhline(50, color="gray", linestyle="dotted", linewidth=1)
+    ax.axhline(50, color=style.COLOR_REFERENCE, linestyle="dotted", linewidth=1)
     ax.set_xlabel("Year")
     ax.set_ylabel("% imprints in NYC")
     ax.legend(loc="upper right", frameon=False)

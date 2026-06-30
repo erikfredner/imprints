@@ -232,23 +232,32 @@ def plot_counterfactuals(cf: pd.DataFrame, t0: int, output: Path) -> None:
     style.apply_style()
     fig, ax = plt.subplots()
     years = cf.index.to_numpy()
-    ax.plot(years, cf["actual"], color="black", linestyle="-", label="Actual")
+    ax.plot(
+        years,
+        cf["actual"],
+        label="Actual",
+        markevery=10,
+        markersize=4,
+        **style.series_style(0),
+    )
     ax.plot(
         years,
         cf["within_only"],
-        color="black",
-        linestyle="--",
         label=f"Composition frozen at {t0}",
+        markevery=10,
+        markersize=4,
+        **style.series_style(1),
     )
     ax.plot(
         years,
         cf["composition_only"],
-        color="black",
-        linestyle=":",
         label=f"Within-range shares frozen at {t0}",
+        markevery=10,
+        markersize=4,
+        **style.series_style(2),
     )
-    ax.axhline(50, color="gray", linestyle="dotted", linewidth=1)
-    ax.axvline(t0, color="0.7", linestyle="-", linewidth=0.8)
+    ax.axhline(50, color=style.COLOR_REFERENCE, linestyle="dotted", linewidth=1)
+    ax.axvline(t0, color=style.COLOR_REFERENCE, linestyle="-", linewidth=0.8)
     ax.set_xlim(YEAR_START, YEAR_END)
     ax.set_xlabel("Year")
     ax.set_ylabel("% of placed PS works published in New York City")

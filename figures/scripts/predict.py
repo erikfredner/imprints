@@ -196,17 +196,18 @@ def main():
     # Plot data and model
     style.apply_style()
     plt.figure()
-    plt.plot(years, pct_city, label="LC MDS Data")
+    plt.plot(years, pct_city, color=style.COLOR_NYC, label="LC MDS Data")
     plt.plot(
         fit_df["year"],
         fit_line,
+        color=style.OKABE_ITO[1],
         label=f"Linear Model ({fit_year_start}-{fit_year_end})",
         linestyle="--",
     )
     plt.scatter(
         args.predict_year,
         y_pred,
-        color="red",
+        color=style.OKABE_ITO[1],
         label=f"Prediction for {args.predict_year} ({fit_year_start}-{fit_year_end})",
         marker="*",
         s=50,
@@ -215,7 +216,7 @@ def main():
         plt.scatter(
             args.predict_year,
             observed_value,
-            color="black",
+            color=style.COLOR_NYC,
             label=f"Observed {args.predict_year}",
             marker="o",
             s=35,
@@ -226,12 +227,12 @@ def main():
         y_pred,
         yerr=[[y_pred - ci_lower], [ci_upper - y_pred]],
         fmt="none",
-        ecolor="red",
+        ecolor=style.OKABE_ITO[1],
         elinewidth=1,
         capsize=4,
         label="95% CI for prediction",
     )
-    plt.axhline(y=50, color="gray", linestyle="--", linewidth=1)
+    plt.axhline(y=50, color=style.COLOR_REFERENCE, linestyle="--", linewidth=1)
     # Annotate R^2 on plot
     ax = plt.gca()
     ax.text(

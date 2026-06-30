@@ -93,7 +93,7 @@ def main() -> None:
 
     style.apply_style()
     plt.figure()
-    plt.plot(years, values, color="C0")
+    plt.plot(years, values)
     plt.xlabel("Year")
     plt.ylabel("Average PS works per PS publisher")
     ymax = values.max()

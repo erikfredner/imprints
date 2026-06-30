@@ -21,15 +21,6 @@ DEFAULT_OUTPUT = Path(__file__).resolve().parents[1] / "outputs/fig5.png"
 YEAR_START = 1900
 YEAR_END = 2010
 
-#: Grayscale-legible line styles cycled across the featured ranges.
-LINE_STYLES = [
-    {"linestyle": "-", "marker": "o"},
-    {"linestyle": "--", "marker": "s"},
-    {"linestyle": "-.", "marker": "^"},
-    {"linestyle": ":", "marker": "D"},
-    {"linestyle": "-", "marker": "v"},
-]
-
 
 def load_data(csv_path: str) -> pd.DataFrame:
     """Load cleaned imprint data from CSV."""
@@ -95,21 +86,19 @@ def main():
         series = share[key].dropna()
         if series.empty:
             continue
-        line_style = LINE_STYLES[i % len(LINE_STYLES)]
         ax.plot(
             series.index,
             series.values,
-            color="black",
             markevery=10,
             markersize=4,
             linewidth=1.2,
-            **line_style,
+            **style.series_style(i),
         )
         n = int(round(totals[key]))
         label = f"{RANGE_LABELS[key]}  (N={n:,})"
         endpoints.append([float(series.iloc[-1]), label])
 
-    ax.axhline(50, color="gray", linestyle="dotted", linewidth=1)
+    ax.axhline(50, color=style.COLOR_REFERENCE, linestyle="dotted", linewidth=1)
     ax.set_xlim(YEAR_START, YEAR_END)
     ax.set_xlabel("Year")
     ax.set_ylabel("% of placed PS works published in " + args.city)

@@ -11,6 +11,7 @@ from pathlib import Path
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
+from cycler import cycler
 
 #: Preferred font, with automatic fallback to matplotlib's stock sans-serif.
 FONT_FAMILY = "Helvetica Now Micro"
@@ -21,12 +22,59 @@ OUTPUT_FORMATS = ("png", "svg", "pdf")
 #: All figures share this resolution.
 DPI = 600
 
+#: Okabe & Ito colorblind-safe qualitative palette, ordered for adjacent
+#: contrast. Used as the default color cycle and as the source for the semantic
+#: colors below. See https://jfly.uni-koeln.de/color/.
+OKABE_ITO = [
+    "#0072B2",  # blue
+    "#D55E00",  # vermillion
+    "#009E73",  # bluish green
+    "#E69F00",  # orange
+    "#CC79A7",  # reddish purple
+    "#56B4E9",  # sky blue
+    "#F0E442",  # yellow
+    "#000000",  # black
+]
 
-def apply_style(base: str = "grayscale") -> None:
+#: Distinct marker shapes cycled across line series so they stay separable in
+#: grayscale print and for the colorblind, regardless of color.
+MARKERS = ["o", "s", "^", "D", "v", ">", "<", "p", "*", "X", "h", "P"]
+
+#: Linestyles cycled as a tertiary cue once there are more series than colors.
+LINESTYLES = ["-", "--", "-.", ":"]
+
+#: Fixed colors for meanings that recur across figures, so e.g. New York City is
+#: the same blue everywhere it appears.
+COLOR_NYC = OKABE_ITO[0]
+COLOR_OTHER = OKABE_ITO[1]
+COLOR_NOPLACE = OKABE_ITO[2]
+
+#: Neutral gray for elements that should recede: the 50% rule lines, CI bands,
+#: and faint background/context lines.
+COLOR_REFERENCE = "0.5"
+
+
+def series_style(i: int) -> dict:
+    """Color/marker/linestyle for the ``i``-th line series in a multi-series chart.
+
+    Markers cycle fastest, then colors, then linestyles, so adjacent series
+    differ in shape first. The result is triple-encoded and stays legible in
+    grayscale print and for the colorblind. Spread as ``**series_style(i)`` into
+    a ``plot`` call.
+    """
+    return {
+        "color": OKABE_ITO[i % len(OKABE_ITO)],
+        "marker": MARKERS[i % len(MARKERS)],
+        "linestyle": LINESTYLES[(i // len(OKABE_ITO)) % len(LINESTYLES)],
+    }
+
+
+def apply_style(base: str = "default") -> None:
     """Apply the shared figure defaults.
 
-    Applies the ``base`` matplotlib style first, then overlays the shared font
-    and DPI settings *after* it (a style reset would otherwise clobber them).
+    Applies the ``base`` matplotlib style first, then overlays the shared font,
+    DPI, and Okabe-Ito color cycle *after* it (a style reset would otherwise
+    clobber them).
     """
     plt.style.use(base)
 
@@ -37,6 +85,7 @@ def apply_style(base: str = "grayscale") -> None:
     mpl.rcParams["font.sans-serif"] = [FONT_FAMILY, *sans_fallback]
     mpl.rcParams["figure.dpi"] = DPI
     mpl.rcParams["savefig.dpi"] = DPI
+    mpl.rcParams["axes.prop_cycle"] = cycler(color=OKABE_ITO)
 
 
 def save_figure(output_path) -> None:

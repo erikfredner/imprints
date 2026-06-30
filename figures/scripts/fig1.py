@@ -81,10 +81,10 @@ def plot_area(
     if include_ci and "ci_lower" in pct_df.columns and "ci_upper" in pct_df.columns:
         lower = pct_df["ci_lower"]
         upper = pct_df["ci_upper"]
-        ax.fill_between(years, lower, upper, color="C0", alpha=0.2)
+        ax.fill_between(years, lower, upper, color=style.COLOR_NYC, alpha=0.2)
 
-    ax.plot(years, pct_city, color="C0")
-    ax.axhline(50, color="gray", linestyle="dotted", linewidth=1)
+    ax.plot(years, pct_city, color=style.COLOR_NYC)
+    ax.axhline(50, color=style.COLOR_REFERENCE, linestyle="dotted", linewidth=1)
 
     ax.set_xlabel("Year")
     ax.set_ylabel("% PS works published in " + city)

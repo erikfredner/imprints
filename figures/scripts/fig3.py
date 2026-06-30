@@ -56,7 +56,7 @@ def main() -> None:
 
     style.apply_style()
     plt.figure()
-    plt.plot(years, values, color="C0")
+    plt.plot(years, values)
     plt.xlabel("Year")
     plt.ylabel("Unique PS publishers")
     ymax = values.max()

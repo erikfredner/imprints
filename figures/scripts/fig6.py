@@ -66,11 +66,13 @@ def _plot_stack(matrix: pd.DataFrame, ylabel: str, output: Path) -> None:
     fig, ax = plt.subplots()
 
     years = matrix.index.to_numpy()
-    grays = [str(v) for v in np.linspace(0.85, 0.25, len(RANGE_ORDER))]
+    colors = [
+        style.OKABE_ITO[i % len(style.OKABE_ITO)] for i in range(len(RANGE_ORDER))
+    ]
     stacks = ax.stackplot(
         years,
         [matrix[key].to_numpy() for key in RANGE_ORDER],
-        colors=grays,
+        colors=colors,
         edgecolor="black",
         linewidth=0.3,
     )
@@ -95,7 +97,7 @@ def _plot_stack(matrix: pd.DataFrame, ylabel: str, output: Path) -> None:
                 ha="left",
                 fontsize=6,
                 annotation_clip=False,
-                arrowprops=dict(arrowstyle="-", lw=0.4, color="0.5"),
+                arrowprops=dict(arrowstyle="-", lw=0.4, color=style.COLOR_REFERENCE),
             )
 
     ax.set_xlim(YEAR_START, YEAR_END)

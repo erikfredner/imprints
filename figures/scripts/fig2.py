@@ -122,27 +122,56 @@ def main():
         se_city = np.sqrt(city_counts)
         lower_city = (city_counts - z * se_city).clip(lower=0)
         upper_city = city_counts + z * se_city
-        plt.fill_between(years, lower_city, upper_city, color="0.7", alpha=0.2)
+        plt.fill_between(
+            years, lower_city, upper_city, color=style.COLOR_NYC, alpha=0.15
+        )
         se_other = np.sqrt(other_counts)
         lower_other = (other_counts - z * se_other).clip(lower=0)
         upper_other = other_counts + z * se_other
-        plt.fill_between(years, lower_other, upper_other, color="0.85", alpha=0.2)
+        plt.fill_between(
+            years, lower_other, upper_other, color=style.COLOR_OTHER, alpha=0.15
+        )
         if no_place_counts is not None:
             se_no_place = np.sqrt(no_place_counts)
             lower_no_place = (no_place_counts - z * se_no_place).clip(lower=0)
             upper_no_place = no_place_counts + z * se_no_place
             plt.fill_between(
-                years, lower_no_place, upper_no_place, color="0.93", alpha=0.2
+                years,
+                lower_no_place,
+                upper_no_place,
+                color=style.COLOR_NOPLACE,
+                alpha=0.15,
             )
-    plt.plot(years, city_counts, label=args.city, color="black", linestyle="-")
-    plt.plot(years, other_counts, label="Other", color="black", linestyle="--")
+    plt.plot(
+        years,
+        city_counts,
+        label=args.city,
+        color=style.COLOR_NYC,
+        linestyle="-",
+        marker=style.MARKERS[0],
+        markevery=10,
+        markersize=4,
+    )
+    plt.plot(
+        years,
+        other_counts,
+        label="Other",
+        color=style.COLOR_OTHER,
+        linestyle="--",
+        marker=style.MARKERS[1],
+        markevery=10,
+        markersize=4,
+    )
     if no_place_counts is not None:
         plt.plot(
             years,
             no_place_counts,
             label="No place of publication",
-            color="black",
+            color=style.COLOR_NOPLACE,
             linestyle=":",
+            marker=style.MARKERS[2],
+            markevery=10,
+            markersize=4,
         )
     plt.xlabel("Year")
     plt.ylabel("PS records with place of publication")
