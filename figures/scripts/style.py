@@ -21,7 +21,7 @@ FONT_FAMILY = "Helvetica Now Micro"
 OUTPUT_FORMATS = ("png", "svg", "pdf")
 
 #: All figures share this resolution.
-DPI = 600
+DPI = 1200
 
 #: Okabe & Ito colorblind-safe qualitative palette, ordered for adjacent
 #: contrast. Used as the default color cycle and as the source for the semantic

@@ -69,7 +69,7 @@ python figures/scripts/fig1.py
 
 By default, they assume that you have placed the outputs of `data_collection` and `data_cleaning` in `data/PS/data.csv`
 
-Generated figures are written to `figures/outputs/` by default, each as PNG, SVG, and PDF. Shared plotting defaults (Helvetica Now Micro font, 600 DPI, grayscale style, output formats) live in `figures/scripts/style.py`.
+Generated figures are written to `figures/outputs/` by default, each as PNG, SVG, and PDF. Shared plotting defaults (Helvetica Now Micro font, 1200 DPI, grayscale style, output formats) live in `figures/scripts/style.py`.
 
 `predict.py` creates the linear model referenced inline, as well as a figure that is not included in the article.
 
