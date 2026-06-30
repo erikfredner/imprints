@@ -2,8 +2,8 @@
 """
 Generate a line chart of the New-York-imprint share over time for the largest
 PS numerical sub-ranges, applying the same NYC plotting rule as fig1 (NYC as a
-share of placed records) to each range separately. Lines are labelled at the
-right edge with their record counts instead of a legend.
+share of placed records) to each range separately. The ranges are ordered by
+record count and identified in a legend below the plotting area.
 """
 
 import argparse
@@ -13,13 +13,74 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 import style
-from imprints.ps_ranges import FEATURED_KEYS, RANGE_LABELS
-from range_shares import counts_matrices, despread_labels, share_matrix
+from imprints.ps_ranges import RANGE_LABELS, RANGE_ORDER
+from range_shares import counts_matrices, share_matrix
 
 DEFAULT_INPUT = Path(__file__).resolve().parents[2] / "data/PS/data.csv"
 DEFAULT_OUTPUT = Path(__file__).resolve().parents[1] / "outputs/fig5.png"
 YEAR_START = 1900
 YEAR_END = 2010
+YEAR_MARGIN = 2
+TOP_N_RANGES = 7
+LEGEND_HEIGHT_INCHES = 1.1
+
+
+def format_count(n: int, compact: bool = False) -> str:
+    """Format a legend count, abbreviating thousands when space is tight."""
+    if compact and n >= 1_000:
+        return f"{n / 1_000:.0f}k"
+    return f"{n:,}"
+
+
+def range_label(key: str, n: int, compact_count: bool = False) -> str:
+    """Return a range-prefixed legend label."""
+    return f"{key}  {RANGE_LABELS[key]}  (N={format_count(n, compact_count)})"
+
+
+def add_bottom_legend(fig, ax, handles, keys, totals):
+    """Add the range legend below the axes, compacting counts if necessary."""
+
+    anchor_display = ax.transAxes.transform((0.5, -0.18))
+    anchor_y = fig.transFigure.inverted().transform(anchor_display)[1]
+
+    def make_legend(
+        compact_count: bool,
+        fontsize: float = 7,
+        handlelength: float = 2.5,
+        columnspacing: float = 1.5,
+    ):
+        labels = [
+            range_label(key, int(round(totals[key])), compact_count) for key in keys
+        ]
+        return fig.legend(
+            handles,
+            labels,
+            loc="upper center",
+            bbox_to_anchor=(0.5, anchor_y),
+            bbox_transform=fig.transFigure,
+            ncol=2,
+            frameon=False,
+            fontsize=fontsize,
+            handlelength=handlelength,
+            columnspacing=columnspacing,
+        )
+
+    legend = make_legend(compact_count=False)
+    fig.canvas.draw()
+    available_width = fig.get_window_extent().width - fig.dpi * 0.2
+    if legend.get_window_extent().width > available_width:
+        legend.remove()
+        legend = make_legend(compact_count=True)
+        fig.canvas.draw()
+    if legend.get_window_extent().width > available_width:
+        legend.remove()
+        legend = make_legend(
+            compact_count=True,
+            fontsize=6,
+            handlelength=2,
+            columnspacing=0.8,
+        )
+    return legend
 
 
 def load_data(csv_path: str) -> pd.DataFrame:
@@ -57,9 +118,9 @@ def main():
     parser.add_argument(
         "--min-year-n",
         type=int,
-        default=20,
+        default=5,
         help="Drop a range's year cells with fewer placed records than this, so "
-        "sparse early years don't spike the line (default: 20)",
+        "sparse early years don't spike the line (default: 5)",
     )
     parser.add_argument(
         "--output",
@@ -71,22 +132,28 @@ def main():
 
     df = load_data(args.input_csv)
     nyc, other = counts_matrices(
-        df, YEAR_START, YEAR_END, city=args.city, ranges=FEATURED_KEYS
+        df, YEAR_START, YEAR_END, city=args.city, ranges=RANGE_ORDER
     )
     share = share_matrix(
         nyc, other, window=args.window, smooth=args.smooth, min_n=args.min_year_n
     )
     totals = (nyc + other).sum()  # raw N per range, unsmoothed
+    featured_keys = (
+        totals.sort_values(ascending=False).head(TOP_N_RANGES).index.tolist()
+    )
 
     style.apply_style()
-    fig, ax = plt.subplots()
+    base_width, base_height = plt.rcParams["figure.figsize"]
+    figure_height = base_height + LEGEND_HEIGHT_INCHES
+    fig, ax = plt.subplots(figsize=(base_width, figure_height))
 
-    endpoints = []  # (last_y, label) for right-edge annotation
-    for i, key in enumerate(FEATURED_KEYS):
+    handles = []
+    plotted_keys = []
+    for i, key in enumerate(featured_keys):
         series = share[key].dropna()
         if series.empty:
             continue
-        ax.plot(
+        (line,) = ax.plot(
             series.index,
             series.values,
             markevery=10,
@@ -94,37 +161,23 @@ def main():
             linewidth=1.2,
             **style.series_style(i),
         )
-        n = int(round(totals[key]))
-        label = f"{RANGE_LABELS[key]}  (N={n:,})"
-        endpoints.append([float(series.iloc[-1]), label])
+        handles.append(line)
+        plotted_keys.append(key)
 
     ax.axhline(50, color=style.COLOR_REFERENCE, linestyle="dotted", linewidth=1)
-    ax.set_xlim(YEAR_START, YEAR_END)
+    ax.set_xlim(YEAR_START - YEAR_MARGIN, YEAR_END + YEAR_MARGIN)
     ax.set_xlabel("Year")
-    ax.set_ylabel("Share of placed PS works published in " + args.city)
+    ax.set_ylabel("PS share with NYC imprint")
     style.percent_yaxis(ax)
 
-    # Right-edge direct labels in place of a legend.
-    y0, y1 = ax.get_ylim()
-    min_gap = 0.06 * (y1 - y0)
-    raw_y = [e[0] for e in endpoints]
-    label_y = despread_labels(raw_y, min_gap)
-    for (_, label), y in zip(endpoints, label_y):
-        ax.annotate(
-            label,
-            xy=(YEAR_END, y),
-            xytext=(6, 0),
-            textcoords="offset points",
-            va="center",
-            ha="left",
-            fontsize=7,
-        )
-
-    fig.subplots_adjust(right=0.6)
+    # Give the axes the same physical layout area as fig1's default 6.4 x 4.8
+    # figure, reserving only the added height for this figure's bottom legend.
+    fig.tight_layout(rect=(0, LEGEND_HEIGHT_INCHES / figure_height, 1, 1))
+    add_bottom_legend(fig, ax, handles, plotted_keys, totals)
     style.save_figure(args.output)
 
     # Per-range summary stats, echoing fig1's reporting.
-    for key in FEATURED_KEYS:
+    for key in featured_keys:
         series = share[key].dropna()
         if series.empty:
             print(f"{key}: no data")
