@@ -2,8 +2,9 @@
 """
 Generate a line chart of the New-York-imprint share over time for the largest
 PS numerical sub-ranges, applying the same NYC plotting rule as fig1 (NYC as a
-share of placed records) to each range separately. The ranges are ordered by
-record count and identified in a legend below the plotting area.
+share of placed records) to each range separately. Ranges with too few records
+to plot reliably are dropped; the remainder are ordered by PS range (not by
+record count) and identified in a legend below the plotting area.
 """
 
 import argparse
@@ -17,11 +18,11 @@ from imprints.ps_ranges import RANGE_LABELS, RANGE_ORDER
 from range_shares import counts_matrices, share_matrix
 
 DEFAULT_INPUT = Path(__file__).resolve().parents[2] / "data/PS/data.csv"
-DEFAULT_OUTPUT = Path(__file__).resolve().parents[1] / "outputs/fig5.png"
+DEFAULT_OUTPUT = Path(__file__).resolve().parents[1] / "outputs/ps_range_nyc_share.png"
 YEAR_START = 1900
 YEAR_END = 2010
 YEAR_MARGIN = 2
-TOP_N_RANGES = 7
+MIN_RANGE_N = 10_000
 LEGEND_HEIGHT_INCHES = 1.1
 
 
@@ -126,7 +127,8 @@ def main():
         "--output",
         type=Path,
         default=DEFAULT_OUTPUT,
-        help="Output file path for the figure (default: figures/outputs/fig5.png)",
+        help="Output file path for the figure (default: "
+        "figures/outputs/ps_range_nyc_share.png)",
     )
     args = parser.parse_args()
 
@@ -138,9 +140,9 @@ def main():
         nyc, other, window=args.window, smooth=args.smooth, min_n=args.min_year_n
     )
     totals = (nyc + other).sum()  # raw N per range, unsmoothed
-    featured_keys = (
-        totals.sort_values(ascending=False).head(TOP_N_RANGES).index.tolist()
-    )
+    # RANGE_ORDER is already ascending by PS number; filtering (not sorting)
+    # keeps that order so the plot and legend read low-to-high PS range.
+    featured_keys = [key for key in RANGE_ORDER if totals[key] >= MIN_RANGE_N]
 
     style.apply_style()
     base_width, base_height = plt.rcParams["figure.figsize"]

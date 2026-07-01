@@ -17,7 +17,7 @@ SCRIPTS = [
     "fig3.py",
     "nyc_and_publishers.py",
     "fig4.py",
-    "fig5.py",
+    "ps_range_nyc_share.py",
     "fig6.py",
     "fig7.py",
     "city_growth.py",

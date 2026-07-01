@@ -102,22 +102,25 @@ rankings are also written to `figures/outputs/city_growth*_ranking.csv`.
 
 ## PS broken down by numerical sub-range
 
-Three figures (`fig5`–`fig7`) break PS apart by its Library of Congress numerical
-sub-ranges (the "individual authors by period" ranges plus the genre/collection
-ranges) to ask whether the overall rise-then-fall story is uniform across PS, and
-whether the post-peak decline is a *within-range* effect or a *composition* effect.
-They read `data/PS/data.csv` directly (no extra build step) and bin records with
-the shared mapping in `imprints.ps_ranges`; the per-range NYC share is computed
-among placed imprints (`NYC / (NYC + Other)`), like the cross-range analysis.
+Three figures (`ps_range_nyc_share`, `fig6`, `fig7`) break PS apart by its Library
+of Congress numerical sub-ranges (the "individual authors by period" ranges plus
+the genre/collection ranges) to ask whether the overall rise-then-fall story is
+uniform across PS, and whether the post-peak decline is a *within-range* effect
+or a *composition* effect. They read `data/PS/data.csv` directly (no extra build
+step) and bin records with the shared mapping in `imprints.ps_ranges`; the
+per-range NYC share is computed among placed imprints (`NYC / (NYC + Other)`),
+like the cross-range analysis.
 
 ```bash
-python figures/scripts/fig5.py   # NYC share over time for the largest sub-ranges
-python figures/scripts/fig6.py   # composition of PS over time (two area charts)
-python figures/scripts/fig7.py   # how much of the decline is composition?
+python figures/scripts/ps_range_nyc_share.py   # NYC share over time for the largest sub-ranges
+python figures/scripts/fig6.py                 # composition of PS over time (two area charts)
+python figures/scripts/fig7.py                 # how much of the decline is composition?
 ```
 
-- **`fig5`** — one NYC-share line per featured range, labelled at the right edge
-  with its record count (`N`).
+- **`ps_range_nyc_share`** — one NYC-share line per sub-range with at least
+  10,000 records (PS700-893, "Individual authors · Colonial", falls well short
+  of that and is dropped), ordered by PS range in a legend below the plot with
+  each range's record count (`N`).
 - **`fig6`** — two stacked-area charts, `fig6_counts` (absolute records per range)
   and `fig6_share` (the same normalized to 100% per year).
 - **`fig7`** — a shift-share decomposition of the peak-to-later change into
