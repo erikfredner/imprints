@@ -19,13 +19,16 @@ def _subfield_xml(code, text):
     return f'<subfield code="{code}">{text}</subfield>'
 
 
-def build_record_xml(datafields):
+def build_record_xml(datafields, controlfields=None):
     """Build a <record> XML string in the MARC slim namespace.
 
     `datafields` is a list of (tag, ind2, subfields) where subfields is a list
     of (code, text) pairs. A text of None produces an empty <subfield/>.
+    `controlfields` is an optional list of (tag, text) pairs, e.g. for 008.
     """
     parts = [f'<record xmlns="{NS}">']
+    for tag, text in controlfields or []:
+        parts.append(f'<controlfield tag="{tag}">{text}</controlfield>')
     for tag, ind2, subfields in datafields:
         parts.append(f'<datafield tag="{tag}" ind1=" " ind2="{ind2}">')
         parts.extend(_subfield_xml(code, text) for code, text in subfields)
@@ -34,9 +37,9 @@ def build_record_xml(datafields):
     return "".join(parts)
 
 
-def make_record(datafields):
+def make_record(datafields, controlfields=None):
     """Parse `build_record_xml` into an lxml element for process_record()."""
-    return ET.fromstring(build_record_xml(datafields))
+    return ET.fromstring(build_record_xml(datafields, controlfields))
 
 
 @pytest.fixture

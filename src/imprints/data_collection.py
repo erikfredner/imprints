@@ -63,7 +63,7 @@ def collect_subfields(record):
         if _local_name(field.tag) != "datafield":
             continue
         tag = field.get("tag")
-        if tag not in ("010", "050", "100", "245", "260", "264"):
+        if tag not in ("010", "050", "090", "100", "245", "260", "264"):
             continue
         ind2 = field.get("ind2", " ")
         is_pub_264 = tag != "264" or ind2 in (" ", "1")
@@ -87,6 +87,60 @@ def _dedup(*lists):
     for lst in lists:
         merged.extend(lst)
     return list(dict.fromkeys(merged))
+
+
+SUBJECT_GENRE_TAGS = ("600", "610", "611", "630", "650", "651", "655")
+
+
+def collect_subject_occurrences(record):
+    """Walk a record's datafields, capturing each 600/610/611/630/650/651/655
+    occurrence as its own structured dict, in document order:
+        {"tag": str, "ind2": str, "subfields": [(code, text), ...]}
+
+    Separate from collect_subfields(), which flattens every occurrence of a
+    tag into one list per (tag, code) -- fine for fields the rest of the
+    pipeline only ever needs the first/merged value from, but it loses which
+    subfields belonged to the same field instance. The secondary-literature
+    classifier needs that grouping (e.g. to compare a single 600's $a/$d
+    against the record's own 100, or to read a 650's $x/$v subdivision chain
+    as written). Repeated codes within one occurrence (two $x in one 650) are
+    kept in order, not deduped. All subfields present are captured, not
+    pre-filtered to a fixed code list, so rule logic owns which codes it
+    reads.
+    """
+    occurrences = []
+    for field in record:
+        if _local_name(field.tag) != "datafield":
+            continue
+        tag = field.get("tag")
+        if tag not in SUBJECT_GENRE_TAGS:
+            continue
+        subfields = []
+        for sub in field:
+            if _local_name(sub.tag) != "subfield":
+                continue
+            text = sub.text
+            if text is None or not text.strip():
+                continue
+            subfields.append((sub.get("code"), text))
+        occurrences.append(
+            {"tag": tag, "ind2": field.get("ind2", " "), "subfields": subfields}
+        )
+    return occurrences
+
+
+def extract_008(record):
+    """Return the raw 008 controlfield text, or None if absent/empty.
+
+    Byte-position interpretation (literary form, biography code) is
+    classification-specific and is owned by the consumer, not here.
+    """
+    for field in record:
+        if _local_name(field.tag) != "controlfield":
+            continue
+        if field.get("tag") == "008":
+            return field.text
+    return None
 
 
 def parse_class(class_str):
@@ -160,8 +214,11 @@ def process_record(record, class_range):
     matches_class_range = filter_classification(classifications, class_range)
 
     lccn = buckets.get(("010", "a"), [])
+    local_call_numbers = buckets.get(("090", "a"), [])
     personal_name_100 = buckets.get(("100", "a"), [])
+    personal_name_100_dates = buckets.get(("100", "d"), [])
     title = buckets.get(("245", "a"), [])
+    subtitle = buckets.get(("245", "b"), [])
     # 260 has no function indicator; its publication 264 counterparts were
     # filtered in collect_subfields. Merge order-preserving, deduped.
     years = _dedup(buckets.get(("260", "c"), []), buckets.get(("264", "c"), []))
@@ -173,10 +230,19 @@ def process_record(record, class_range):
         "classifications": classifications,
         "matches_class_range": matches_class_range,
         "title": title[0] if title else None,
+        "subtitle": subtitle[0] if subtitle else None,
         "year": years,
         "places": places,
         "publishers": publishers,
         "first_author": personal_name_100[0] if personal_name_100 else None,
+        # Fields below support imprints.secondary_classification and are
+        # otherwise unused by the rest of the pipeline.
+        "local_call_numbers": local_call_numbers,
+        "first_author_dates": personal_name_100_dates[0]
+        if personal_name_100_dates
+        else None,
+        "subject_genre_fields": collect_subject_occurrences(record),
+        "field_008": extract_008(record),
     }
     return data
 

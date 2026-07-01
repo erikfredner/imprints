@@ -122,6 +122,7 @@ def test_process_record_full_record():
     assert data["classifications"] == ["PS2132", "PZ3.J55"]
     assert data["matches_class_range"] is True
     assert data["title"] == "The queen's twin /"
+    assert data["subtitle"] is None
     assert data["first_author"] == "Jewett, Sarah Orne,"
     assert data["places"] == ["Boston :"]
 
@@ -132,6 +133,21 @@ def test_process_record_non_matching_class_flagged_false():
     assert data["matches_class_range"] is False
     # Records are kept regardless of match (filtering happens in cleaning).
     assert data["classifications"] == ["PR6019"]
+
+
+def test_process_record_extracts_subtitle_from_245_b():
+    rec = make_record(
+        [("245", "4", [("a", "The queen's twin /"), ("b", "and other stories /")])]
+    )
+    data = dc.process_record(rec, dc.parse_range_spec("PS"))
+    assert data["title"] == "The queen's twin /"
+    assert data["subtitle"] == "and other stories /"
+
+
+def test_process_record_subtitle_none_when_245_b_absent():
+    rec = make_record([("245", "4", [("a", "The queen's twin /")])])
+    data = dc.process_record(rec, dc.parse_range_spec("PS"))
+    assert data["subtitle"] is None
 
 
 def test_260_and_264_merge_order_preserving_dedup():
@@ -162,6 +178,109 @@ def test_parse_records_round_trip(tmp_path, marc_gz_writer):
     ]
     assert len(parsed) == 3
     assert [p["matches_class_range"] for p in parsed] == [True, False, True]
+
+
+def test_collect_subfields_captures_090_local_call_number():
+    rec = make_record([("090", " ", [("a", "PS3555 .I123")])])
+    buckets = dc.collect_subfields(rec)
+    assert buckets[("090", "a")] == ["PS3555 .I123"]
+
+
+def test_collect_subject_occurrences_groups_by_field_instance():
+    rec = make_record(
+        [
+            ("650", "0", [("a", "American fiction"), ("x", "20th century")]),
+            ("650", "0", [("a", "Detective and mystery stories"), ("x", "History")]),
+        ]
+    )
+    occs = dc.collect_subject_occurrences(rec)
+    assert len(occs) == 2
+    assert occs[0]["subfields"] == [
+        ("a", "American fiction"),
+        ("x", "20th century"),
+    ]
+    assert occs[1]["subfields"] == [
+        ("a", "Detective and mystery stories"),
+        ("x", "History"),
+    ]
+
+
+def test_collect_subject_occurrences_ignores_non_subject_tags():
+    rec = make_record([("700", " ", [("a", "Added entry")])])
+    assert dc.collect_subject_occurrences(rec) == []
+
+
+def test_collect_subject_occurrences_preserves_repeated_subfield_codes_within_occurrence():
+    rec = make_record(
+        [
+            (
+                "650",
+                "0",
+                [
+                    ("a", "Hemingway, Ernest,"),
+                    ("x", "Criticism and interpretation"),
+                    ("x", "In literature"),
+                ],
+            )
+        ]
+    )
+    occs = dc.collect_subject_occurrences(rec)
+    assert len(occs) == 1
+    assert occs[0]["subfields"] == [
+        ("a", "Hemingway, Ernest,"),
+        ("x", "Criticism and interpretation"),
+        ("x", "In literature"),
+    ]
+
+
+def test_extract_008_returns_raw_text():
+    rec = make_record(
+        [("245", "0", [("a", "Title /")])],
+        controlfields=[("008", "760729s1899    nyu           000 0 eng  ")],
+    )
+    assert dc.extract_008(rec) == "760729s1899    nyu           000 0 eng  "
+
+
+def test_extract_008_returns_none_when_absent():
+    rec = make_record([("245", "0", [("a", "Title /")])])
+    assert dc.extract_008(rec) is None
+
+
+def test_process_record_adds_new_fields_without_changing_existing_keys():
+    rec = make_record(
+        [
+            ("010", " ", [("a", "   00000057 ")]),
+            ("050", "0", [("a", "PS2132")]),
+            ("090", " ", [("a", "PS2132 .L37")]),
+            ("100", "1", [("a", "Jewett, Sarah Orne,"), ("d", "1849-1909.")]),
+            ("245", "4", [("a", "The queen's twin /")]),
+            ("264", "1", [("a", "Boston :"), ("b", "Houghton,"), ("c", "[1899]")]),
+            ("600", "1", [("a", "Jewett, Sarah Orne,"), ("d", "1849-1909.")]),
+            ("650", "0", [("a", "Short stories, American.")]),
+        ],
+        controlfields=[("008", "760729s1899    mau           000 0 eng  ")],
+    )
+    data = dc.process_record(rec, dc.parse_range_spec("PS"))
+
+    # Existing keys/values unchanged.
+    assert data["lccn"] == "   00000057 "
+    assert data["classifications"] == ["PS2132"]
+    assert data["matches_class_range"] is True
+    assert data["title"] == "The queen's twin /"
+    assert data["year"] == ["[1899]"]
+    assert data["places"] == ["Boston :"]
+    assert data["publishers"] == ["Houghton,"]
+    assert data["first_author"] == "Jewett, Sarah Orne,"
+
+    # New keys present and correctly populated.
+    assert data["local_call_numbers"] == ["PS2132 .L37"]
+    assert data["first_author_dates"] == "1849-1909."
+    assert data["field_008"] == "760729s1899    mau           000 0 eng  "
+    assert [o["tag"] for o in data["subject_genre_fields"]] == ["600", "650"]
+    assert data["subject_genre_fields"][0]["subfields"] == [
+        ("a", "Jewett, Sarah Orne,"),
+        ("d", "1849-1909."),
+    ]
 
 
 def test_parse_records_drops_processed_siblings(tmp_path, marc_gz_writer):
