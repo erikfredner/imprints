@@ -48,6 +48,17 @@ def compute_first_occurrence(df: pd.DataFrame) -> pd.DataFrame:
     return pairs
 
 
+def compute_peak_share_year(
+    df: pd.DataFrame, city: str, start_year: int, end_year: int
+) -> int:
+    """Year within [start_year, end_year] with the highest (unsmoothed) share of
+    all PS records in `city`, per fig1.compute_city_share."""
+    pct = fig1.compute_city_share(
+        df, city=city, start_year=start_year, end_year=end_year, smooth=False
+    )
+    return int(pct[1].idxmax())
+
+
 def compute_period_probability(
     pairs: pd.DataFrame, city: str, start_year: int, split_year: int, end_year: int
 ) -> tuple[float, float, int, int]:
@@ -89,6 +100,11 @@ def print_period_probability(
     )
     print(
         f"Odds ratio (before vs. after {split_year}): {odds_before / odds_after:.2f}x"
+    )
+    print(
+        f"Odds ratio (after vs. before {split_year}): {odds_after / odds_before:.2f}x "
+        f"(odds of a new pairing being in {city} fell to "
+        f"{odds_after / odds_before:.1%} of their pre-{split_year} level)"
     )
 
 
@@ -146,9 +162,10 @@ def main():
     parser.add_argument(
         "--split-year",
         type=int,
-        default=1960,
+        default=None,
         help="Year at which to split the before/after probability and odds "
-        "summary printed to stdout (default: 1960)",
+        "summary printed to stdout (default: the year of peak NYC share of all "
+        "PS records, per fig1.compute_city_share)",
     )
     parser.add_argument(
         "--window",
@@ -179,9 +196,14 @@ def main():
     print(f"Unique publisher-place pairings: {len(pairs):,}")
     print(pairs["city_group"].value_counts().to_string())
 
-    print_period_probability(
-        pairs, city, args.start_year, args.split_year, args.end_year
-    )
+    split_year = args.split_year
+    if split_year is None:
+        split_year = compute_peak_share_year(
+            df, city=city, start_year=args.start_year, end_year=args.end_year
+        )
+        print(f"Peak NYC share year (used as split year): {split_year}")
+
+    print_period_probability(pairs, city, args.start_year, split_year, args.end_year)
 
     pct = fig1.compute_city_share(
         pairs,
