@@ -18,12 +18,7 @@ def repeated_lccn_percentage(input_csv: str) -> float:
     except ValueError as exc:
         raise ValueError("Expected an 'lccn' column in the input CSV.") from exc
 
-    lccns = (
-        df["lccn"]
-        .dropna()
-        .astype(str)
-        .str.strip()
-    )
+    lccns = df["lccn"].dropna().astype(str).str.strip()
     lccns = lccns[lccns != ""]
 
     if lccns.empty:

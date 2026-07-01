@@ -36,7 +36,9 @@ def drop_missing_lccn(df: pd.DataFrame) -> pd.DataFrame:
     """
     missing = df["lccn"].isna()
     if missing.any():
-        print(f"Dropping {missing.sum():,} rows with missing lccn (no record id to group by).\n")
+        print(
+            f"Dropping {missing.sum():,} rows with missing lccn (no record id to group by).\n"
+        )
     return df[~missing]
 
 
@@ -106,7 +108,9 @@ def compute_city_share(
     weight = weight.loc[df.index]
 
     in_city = (df["city_group"] == city).astype(int)
-    weighted = pd.DataFrame({"year_min": df["year_min"], "in_city": in_city, "weight": weight})
+    weighted = pd.DataFrame(
+        {"year_min": df["year_min"], "in_city": in_city, "weight": weight}
+    )
 
     totals = (
         weighted.groupby(["year_min", "in_city"])["weight"]
@@ -157,7 +161,9 @@ def _fmt(value, suffix=""):
     return "—" if value is None else f"{value}{suffix}"
 
 
-def print_comparison_table(results: dict, city: str, start_year: int, end_year: int) -> None:
+def print_comparison_table(
+    results: dict, city: str, start_year: int, end_year: int
+) -> None:
     print(f"NYC share crossing/peak stats by method ({city}, {start_year}-{end_year})")
     print("-" * 100)
     header = (
@@ -167,9 +173,7 @@ def print_comparison_table(results: dict, city: str, start_year: int, end_year: 
     print(header)
     for method in METHODS:
         stats = results[method]
-        peak_pct = (
-            "—" if stats["peak_pct"] is None else f"{stats['peak_pct']:.2f}"
-        )
+        peak_pct = "—" if stats["peak_pct"] is None else f"{stats['peak_pct']:.2f}"
         print(
             f"{METHOD_LABELS[method]:<40}"
             f"{_fmt(stats['first_year_at_least_50']):>16}"

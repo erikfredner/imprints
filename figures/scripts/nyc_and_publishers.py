@@ -15,9 +15,7 @@ import fig3
 import style
 
 DEFAULT_INPUT = Path(__file__).resolve().parents[2] / "data/PS/data.csv"
-DEFAULT_OUTPUT = (
-    Path(__file__).resolve().parents[1] / "outputs/nyc_and_publishers.png"
-)
+DEFAULT_OUTPUT = Path(__file__).resolve().parents[1] / "outputs/nyc_and_publishers.png"
 
 
 def plot_left(ax, args, counts) -> None:
@@ -32,7 +30,9 @@ def plot_left(ax, args, counts) -> None:
         se_city = np.sqrt(city_counts)
         lower_city = (city_counts - z * se_city).clip(min=0)
         upper_city = city_counts + z * se_city
-        ax.fill_between(years, lower_city, upper_city, color=style.COLOR_NYC, alpha=0.15)
+        ax.fill_between(
+            years, lower_city, upper_city, color=style.COLOR_NYC, alpha=0.15
+        )
         se_other = np.sqrt(other_counts)
         lower_other = (other_counts - z * se_other).clip(min=0)
         upper_other = other_counts + z * se_other
@@ -165,9 +165,7 @@ def main():
 
     style.apply_style()
     base_width, base_height = plt.rcParams["figure.figsize"]
-    fig, (ax_left, ax_right) = plt.subplots(
-        1, 2, figsize=(base_width * 2, base_height)
-    )
+    fig, (ax_left, ax_right) = plt.subplots(1, 2, figsize=(base_width * 2, base_height))
 
     correlation = None
     if args.annotate_correlation:

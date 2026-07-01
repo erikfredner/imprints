@@ -15,12 +15,7 @@ def get_unique_places(input_csv, output_txt):
     if "places_clean" not in df.columns:
         raise ValueError("Expected a 'places_clean' column in the input CSV.")
 
-    places = (
-        df["places_clean"]
-        .dropna()
-        .astype(str)
-        .str.strip()
-    )
+    places = df["places_clean"].dropna().astype(str).str.strip()
     unique_places = sorted({p for p in places if p})
 
     with open(output_txt, "w", encoding="utf-8") as f:
