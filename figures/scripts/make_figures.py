@@ -21,6 +21,7 @@ SCRIPTS = [
     "fig6.py",
     "fig7.py",
     "city_growth.py",
+    "unique_places_per_100.py",
     "predict.py",
 ]
 
