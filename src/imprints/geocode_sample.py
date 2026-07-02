@@ -1,9 +1,18 @@
 """
-Geocode every distinct cleaned place of publication via Nominatim.
+Geocode places of publication via Nominatim.
 
-Spot-checks how well `places_clean` (the string produced by
-`imprints.data_cleaning.clean_string`) maps back to real-world places by
-resolving each unique value against the Nominatim/OpenStreetMap search API.
+Two modes, selected by the `mode` positional argument:
+
+- `places` (default): spot-checks how well `places_clean` (the string
+  produced by `imprints.data_cleaning.clean_string`) maps back to
+  real-world places by resolving each unique value against the
+  Nominatim/OpenStreetMap search API.
+- `llm`: takes `imprints.llm_geocode`'s output (one row per `places_clean`
+  with an `llm_normalized_place` guess) and geocodes the LLM-normalized
+  string instead, carrying the original `places_clean`-based Nominatim
+  columns through and adding a `nominatim_match` column that flags whether
+  the two Nominatim lookups (from `places_clean` vs. from
+  `llm_normalized_place`) resolved to the same city/state/country.
 
 Respects the Nominatim usage policy: sequential requests only, an absolute
 max of 1 request/second, a custom User-Agent, and no repeated identical
@@ -21,6 +30,11 @@ Usage:
     python -m imprints.geocode_sample \
         --input_csv data/PS/data.csv \
         --output_csv data/PS/nominatim_full.csv \
+        --email you@example.com
+
+    python -m imprints.geocode_sample llm \
+        --input_csv data/PS/llm_geocode.csv \
+        --output_csv data/PS/llm_geocode_nominatim.csv \
         --email you@example.com
 """
 
@@ -47,6 +61,36 @@ OUTPUT_FIELDS = [
     "nominatim_lat",
     "nominatim_lon",
     "nominatim_display_name",
+]
+EMPTY_NOMINATIM_RESULT = {
+    "nominatim_found": False,
+    "nominatim_city": None,
+    "nominatim_state": None,
+    "nominatim_country": None,
+    "nominatim_country_code": None,
+    "nominatim_lat": None,
+    "nominatim_lon": None,
+    "nominatim_display_name": None,
+}
+LLM_OUTPUT_FIELDS = [
+    "places_clean",
+    "places_original_example",
+    "n_records",
+    "nominatim_found",
+    "nominatim_city",
+    "nominatim_state",
+    "nominatim_country",
+    "llm_normalized_place",
+    "llm_model",
+    "llm_nominatim_found",
+    "llm_nominatim_city",
+    "llm_nominatim_state",
+    "llm_nominatim_country",
+    "llm_nominatim_country_code",
+    "llm_nominatim_lat",
+    "llm_nominatim_lon",
+    "llm_nominatim_display_name",
+    "nominatim_match",
 ]
 
 
@@ -110,16 +154,7 @@ def geocode_place(session, place, email, user_agent, max_retries=3):
         break
 
     if not results:
-        return {
-            "nominatim_found": False,
-            "nominatim_city": None,
-            "nominatim_state": None,
-            "nominatim_country": None,
-            "nominatim_country_code": None,
-            "nominatim_lat": None,
-            "nominatim_lon": None,
-            "nominatim_display_name": None,
-        }
+        return dict(EMPTY_NOMINATIM_RESULT)
 
     top = results[0]
     address = top.get("address", {})
@@ -194,14 +229,131 @@ def run(input_csv, output_csv, email, user_agent, sleep_seconds, limit=None):
     print(f"Done. Wrote {n_done} new rows to {output_csv}.")
 
 
+def _places_match(row, llm_result):
+    """True iff the places_clean-based and llm_normalized_place-based
+    Nominatim lookups both succeeded and resolved to the same
+    city/state/country."""
+    if not row.get("nominatim_found") or not llm_result["nominatim_found"]:
+        return False
+    for field in ("nominatim_city", "nominatim_state", "nominatim_country"):
+        clean_value = row.get(field)
+        clean_value = None if pd.isna(clean_value) else clean_value
+        if clean_value != llm_result[field]:
+            return False
+    return True
+
+
+def run_llm(input_csv, output_csv, email, user_agent, sleep_seconds, limit=None):
+    """Geocode the `llm_normalized_place` column of `imprints.llm_geocode`'s
+    output via Nominatim, alongside the `places_clean`-based Nominatim
+    columns it already carries."""
+    print(f"Loading {input_csv}")
+    df = pd.read_csv(input_csv).sort_values("places_clean").reset_index(drop=True)
+    print(f"{len(df)} places total.")
+
+    done = already_processed(output_csv)
+    remaining = df[~df["places_clean"].astype(str).isin(done)]
+    print(f"{len(done)} already done, {len(remaining)} remaining.")
+
+    if limit is not None:
+        remaining = remaining.iloc[:limit]
+        print(f"Limiting this run to {len(remaining)} places.")
+
+    is_new_file = not os.path.exists(output_csv) or os.path.getsize(output_csv) == 0
+    session = requests.Session()
+    n_done = 0
+    with open(output_csv, "a", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=LLM_OUTPUT_FIELDS)
+        if is_new_file:
+            writer.writeheader()
+            f.flush()
+
+        try:
+            for i, row in remaining.reset_index(drop=True).iterrows():
+                llm_place = row["llm_normalized_place"]
+                has_llm_place = pd.notna(llm_place) and str(llm_place).strip() != ""
+
+                if has_llm_place:
+                    print(f"[{i + 1}/{len(remaining)}] Geocoding: {llm_place!r}")
+                    result = geocode_place(session, llm_place, email, user_agent)
+                else:
+                    print(
+                        f"[{i + 1}/{len(remaining)}] Skipping (no "
+                        f"llm_normalized_place): {row['places_clean']!r}"
+                    )
+                    result = dict(EMPTY_NOMINATIM_RESULT)
+
+                writer.writerow(
+                    {
+                        "places_clean": row["places_clean"],
+                        "places_original_example": row["places_original_example"],
+                        "n_records": row["n_records"],
+                        "nominatim_found": row.get("nominatim_found"),
+                        "nominatim_city": row.get("nominatim_city"),
+                        "nominatim_state": row.get("nominatim_state"),
+                        "nominatim_country": row.get("nominatim_country"),
+                        "llm_normalized_place": row.get("llm_normalized_place"),
+                        "llm_model": row.get("llm_model"),
+                        "llm_nominatim_found": result["nominatim_found"],
+                        "llm_nominatim_city": result["nominatim_city"],
+                        "llm_nominatim_state": result["nominatim_state"],
+                        "llm_nominatim_country": result["nominatim_country"],
+                        "llm_nominatim_country_code": result["nominatim_country_code"],
+                        "llm_nominatim_lat": result["nominatim_lat"],
+                        "llm_nominatim_lon": result["nominatim_lon"],
+                        "llm_nominatim_display_name": result["nominatim_display_name"],
+                        "nominatim_match": _places_match(row, result),
+                    }
+                )
+                f.flush()
+                n_done += 1
+                if has_llm_place and i < len(remaining) - 1:
+                    time.sleep(sleep_seconds)
+        except requests.HTTPError as e:
+            print(
+                f"Stopping early after {n_done}/{len(remaining)} requests this run "
+                f"due to HTTP error: {e}. Rerun the same command later to resume."
+            )
+            return
+        except KeyboardInterrupt:
+            print(
+                f"Interrupted after {n_done}/{len(remaining)} requests this run. "
+                "Rerun the same command later to resume."
+            )
+            return
+
+    print(f"Done. Wrote {n_done} new rows to {output_csv}.")
+
+
 def main():
     parser = argparse.ArgumentParser(
-        description="Geocode every distinct cleaned place via Nominatim. "
-        "Resumable: rerun the same command to continue after an interruption "
-        "or API block."
+        description="Geocode places of publication via Nominatim. Resumable: "
+        "rerun the same command to continue after an interruption or API "
+        "block."
     )
-    parser.add_argument("--input_csv", default="data/PS/data.csv")
-    parser.add_argument("--output_csv", default="data/PS/nominatim_full.csv")
+    parser.add_argument(
+        "mode",
+        nargs="?",
+        choices=["places", "llm"],
+        default="places",
+        help="'places' (default) geocodes each unique places_clean value "
+        "from --input_csv (data.csv-shaped). 'llm' geocodes the "
+        "llm_normalized_place column of imprints.llm_geocode's output "
+        "instead, and adds a nominatim_match column comparing it against "
+        "the places_clean-based Nominatim result already in that file.",
+    )
+    parser.add_argument(
+        "--input_csv",
+        default=None,
+        help="Default: data/PS/data.csv for mode=places, "
+        "data/PS/llm_geocode.csv for mode=llm.",
+    )
+    parser.add_argument(
+        "--output_csv",
+        default=None,
+        help="Default: data/PS/nominatim_full.csv for mode=places, "
+        "data/PS/llm_geocode_nominatim.csv for mode=llm.",
+    )
     parser.add_argument(
         "--email",
         required=True,
@@ -230,14 +382,28 @@ def main():
 
     user_agent = args.user_agent or f"imprints-research/0.1 (contact: {args.email})"
 
-    run(
-        args.input_csv,
-        args.output_csv,
-        args.email,
-        user_agent,
-        args.sleep_seconds,
-        args.limit,
-    )
+    if args.mode == "places":
+        input_csv = args.input_csv or "data/PS/data.csv"
+        output_csv = args.output_csv or "data/PS/nominatim_full.csv"
+        run(
+            input_csv,
+            output_csv,
+            args.email,
+            user_agent,
+            args.sleep_seconds,
+            args.limit,
+        )
+    else:
+        input_csv = args.input_csv or "data/PS/llm_geocode.csv"
+        output_csv = args.output_csv or "data/PS/llm_geocode_nominatim.csv"
+        run_llm(
+            input_csv,
+            output_csv,
+            args.email,
+            user_agent,
+            args.sleep_seconds,
+            args.limit,
+        )
 
 
 if __name__ == "__main__":
