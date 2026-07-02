@@ -1,5 +1,6 @@
 # .gitignore
 data/
+.env
 
 # Generated figure outputs (regenerate with figures/scripts/make_figures.py)
 figures/outputs/
