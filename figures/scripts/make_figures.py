@@ -23,6 +23,7 @@ SCRIPTS = [
     "fig7.py",
     "city_growth.py",
     "unique_places_per_100.py",
+    "nyc_peak_map.py",
     "predict.py",
 ]
 
