@@ -24,6 +24,7 @@ SCRIPTS = [
     "city_growth.py",
     "unique_places_per_100.py",
     "nyc_peak_map.py",
+    "nyc_peak_map_diverging.py",
     "predict.py",
 ]
 

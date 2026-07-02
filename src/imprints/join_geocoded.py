@@ -2,12 +2,15 @@
 Join cleaned PS records with their geocoded places of publication.
 
 Left-merges `data/PS/data.csv` (record-level, one row per place of
-publication) onto `data/PS/nominatim_full.csv` (one row per unique
-`places_clean` value, produced by `imprints.geocode_sample`) on the
-`places_clean` join key. The two are keyed identically -- `geocode_sample`
-reads `places_clean` straight out of `data.csv` without further
-normalization -- so this is a plain exact-match merge, many-to-one from
-data.csv's side.
+publication) onto `data/PS/llm_geocode_nominatim.csv` (one row per unique
+`places_clean` value, produced by `imprints.geocode_sample llm` from
+`imprints.llm_geocode`'s output) on the `places_clean` join key. The two are
+keyed identically -- `geocode_sample` reads `places_clean` straight out of
+`data.csv` without further normalization -- so this is a plain exact-match
+merge, many-to-one from data.csv's side.
+
+Coordinates come from the `llm_nominatim_*` columns: Nominatim results for
+the LLM-normalized place name, not the raw `places_clean` string.
 
 All rows from data.csv are kept, including those with no Nominatim match or
 a non-US result; scope-specific filtering (e.g. to US-only records) is left
@@ -16,7 +19,7 @@ to whichever figure or analysis consumes this output.
 Usage:
     python -m imprints.join_geocoded \
         --input-csv data/PS/data.csv \
-        --nominatim-csv data/PS/nominatim_full.csv \
+        --nominatim-csv data/PS/llm_geocode_nominatim.csv \
         --output-csv data/PS/geocoded.csv
 """
 
@@ -29,9 +32,9 @@ OUTPUT_COLUMNS = [
     "year_min",
     "places_clean",
     "city_group",
-    "nominatim_lat",
-    "nominatim_lon",
-    "nominatim_country_code",
+    "llm_nominatim_lat",
+    "llm_nominatim_lon",
+    "llm_nominatim_country_code",
 ]
 
 
@@ -43,15 +46,15 @@ def load_data(input_csv: str) -> pd.DataFrame:
 
 
 def load_nominatim(nominatim_csv: str) -> pd.DataFrame:
-    """Load the per-unique-place geocoding results."""
+    """Load the per-unique-place LLM-normalized geocoding results."""
     df = pd.read_csv(
         nominatim_csv,
         usecols=[
             "places_clean",
-            "nominatim_found",
-            "nominatim_country_code",
-            "nominatim_lat",
-            "nominatim_lon",
+            "llm_nominatim_found",
+            "llm_nominatim_country_code",
+            "llm_nominatim_lat",
+            "llm_nominatim_lon",
         ],
     )
     if df["places_clean"].duplicated().any():
@@ -72,12 +75,12 @@ def join(data_df: pd.DataFrame, nominatim_df: pd.DataFrame) -> pd.DataFrame:
 def print_summary(merged: pd.DataFrame) -> None:
     """Print match-rate diagnostics for the joined table."""
     total = len(merged)
-    matched = merged["nominatim_lat"].notna().sum()
-    us = (merged["nominatim_country_code"] == "us").sum()
+    matched = merged["llm_nominatim_lat"].notna().sum()
+    us = (merged["llm_nominatim_country_code"] == "us").sum()
     print(f"Joined rows: {total:,}")
     print(f"Rows with a Nominatim match: {matched:,} ({matched / total:.1%})")
     print(
-        f"Rows resolving to US (nominatim_country_code == 'us'): {us:,} ({us / total:.1%})"
+        f"Rows resolving to US (llm_nominatim_country_code == 'us'): {us:,} ({us / total:.1%})"
     )
 
 
@@ -93,9 +96,9 @@ def main():
     )
     parser.add_argument(
         "--nominatim-csv",
-        default="data/PS/nominatim_full.csv",
-        help="Path to Nominatim geocoding results CSV "
-        "(default: data/PS/nominatim_full.csv)",
+        default="data/PS/llm_geocode_nominatim.csv",
+        help="Path to LLM-normalized Nominatim geocoding results CSV "
+        "(default: data/PS/llm_geocode_nominatim.csv)",
     )
     parser.add_argument(
         "--output-csv",

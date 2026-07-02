@@ -31,7 +31,7 @@ YEAR_START = 1900
 YEAR_END = 2010
 
 #: Continental US bounding box. Excludes Alaska, Hawaii, Puerto Rico, and
-#: other territories, which nominatim_country_code == "us" alone does not.
+#: other territories, which llm_nominatim_country_code == "us" alone does not.
 CONUS_LON_MIN, CONUS_LON_MAX = -125, -66
 CONUS_LAT_MIN, CONUS_LAT_MAX = 24, 50
 
@@ -59,13 +59,13 @@ def load_data(csv_path: Path) -> pd.DataFrame:
 def filter_us_conus(df: pd.DataFrame) -> pd.DataFrame:
     """Restrict to US-resolved records within the continental bounding box."""
     us = df[
-        (df["nominatim_country_code"] == "us")
-        & df["nominatim_lat"].notna()
-        & df["nominatim_lon"].notna()
+        (df["llm_nominatim_country_code"] == "us")
+        & df["llm_nominatim_lat"].notna()
+        & df["llm_nominatim_lon"].notna()
     ]
     return us[
-        us["nominatim_lon"].between(CONUS_LON_MIN, CONUS_LON_MAX)
-        & us["nominatim_lat"].between(CONUS_LAT_MIN, CONUS_LAT_MAX)
+        us["llm_nominatim_lon"].between(CONUS_LON_MIN, CONUS_LON_MAX)
+        & us["llm_nominatim_lat"].between(CONUS_LAT_MIN, CONUS_LAT_MAX)
     ]
 
 
@@ -85,7 +85,7 @@ def coordinate_counts(df: pd.DataFrame) -> pd.DataFrame:
     """Count records at each unique (lat, lon) in df, flagging coordinates
     where any record's city_group is "New York City"."""
     return (
-        df.groupby(["nominatim_lat", "nominatim_lon"])
+        df.groupby(["llm_nominatim_lat", "llm_nominatim_lon"])
         .agg(
             count=("city_group", "size"),
             is_nyc=("city_group", lambda s: (s == "New York City").any()),
@@ -107,8 +107,8 @@ def split_by_prior_presence(
     """Split after_counts into coordinates that also appear in before_counts
     (returning locations) and those that don't (new locations)."""
     merged = after_counts.merge(
-        before_counts[["nominatim_lat", "nominatim_lon"]],
-        on=["nominatim_lat", "nominatim_lon"],
+        before_counts[["llm_nominatim_lat", "llm_nominatim_lon"]],
+        on=["llm_nominatim_lat", "llm_nominatim_lon"],
         how="left",
         indicator=True,
     )
@@ -156,8 +156,8 @@ def scatter_coords(
     coordinates."""
     sizes = marker_size(coord_counts["count"].to_numpy(), all_counts)
     ax.scatter(
-        coord_counts["nominatim_lon"],
-        coord_counts["nominatim_lat"],
+        coord_counts["llm_nominatim_lon"],
+        coord_counts["llm_nominatim_lat"],
         s=sizes,
         c=color,
         marker=marker,
