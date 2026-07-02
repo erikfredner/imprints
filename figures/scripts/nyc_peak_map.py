@@ -6,9 +6,10 @@ New York City's peak share year.
 
 Point size is on a single scale shared across both panels, so the greater
 volume of publication locations after NYC's peak is visible relative to the
-concentrated pre-peak panel. In the post-peak panel, points are colored by
-whether their coordinate also published PS works before the peak (a
-returning location) or only appears afterward (a new location).
+concentrated pre-peak panel. Points use one of three color/shape categories:
+New York City, Other (a non-NYC coordinate that already published PS works
+before the peak), and New (a non-NYC coordinate appearing only after the
+peak, shown only in the lower panel).
 """
 
 import argparse
@@ -34,12 +35,14 @@ YEAR_END = 2010
 CONUS_LON_MIN, CONUS_LON_MAX = -125, -66
 CONUS_LAT_MIN, CONUS_LAT_MAX = 24, 50
 
-#: Coordinates that published PS works before the peak year (used as-is for
-#: the pre-peak panel, and for the "returning" subset of the post-peak panel).
-EXISTING_COLOR = style.COLOR_NYC
-EXISTING_MARKER = "o"
-#: Coordinates appearing only after the peak year, shown in the post-peak panel.
-NEW_COLOR = style.COLOR_OTHER
+#: Coordinates whose city_group is "New York City", in either panel.
+NYC_COLOR = style.COLOR_NYC
+NYC_MARKER = "o"
+#: Non-NYC coordinates that already published PS works before the peak year.
+OTHER_COLOR = style.COLOR_OTHER
+OTHER_MARKER = "s"
+#: Non-NYC coordinates appearing only after the peak year (post-peak panel only).
+NEW_COLOR = style.OKABE_ITO[2]
 NEW_MARKER = "^"
 POINT_ALPHA = 0.5
 MIN_MARKER_SIZE = 8
@@ -79,10 +82,23 @@ def compute_peak_year(df: pd.DataFrame, start_year: int, end_year: int) -> int:
 
 
 def coordinate_counts(df: pd.DataFrame) -> pd.DataFrame:
-    """Count records at each unique (lat, lon) in df."""
+    """Count records at each unique (lat, lon) in df, flagging coordinates
+    where any record's city_group is "New York City"."""
     return (
-        df.groupby(["nominatim_lat", "nominatim_lon"]).size().reset_index(name="count")
+        df.groupby(["nominatim_lat", "nominatim_lon"])
+        .agg(
+            count=("city_group", "size"),
+            is_nyc=("city_group", lambda s: (s == "New York City").any()),
+        )
+        .reset_index()
     )
+
+
+def split_by_city(coord_counts: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Split coordinate counts into NYC and non-NYC (Other) groups."""
+    nyc = coord_counts[coord_counts["is_nyc"]]
+    other = coord_counts[~coord_counts["is_nyc"]]
+    return nyc, other
 
 
 def split_by_prior_presence(
@@ -192,33 +208,22 @@ def add_size_legend(fig, all_counts: np.ndarray) -> None:
     )
 
 
-def add_color_legend(ax, peak_year: int) -> None:
-    """Legend explaining the two post-peak colors: coordinates that also
-    published PS works before the peak year vs. coordinates new since then."""
+def add_category_legend(ax, entries: list[tuple[str, str, str]]) -> None:
+    """Legend mapping each (label, color, marker) entry to a proxy point,
+    so panels can show only the categories they actually contain."""
     handles = [
         Line2D(
             [],
             [],
-            marker=EXISTING_MARKER,
+            marker=marker,
             linestyle="none",
-            markerfacecolor=EXISTING_COLOR,
+            markerfacecolor=color,
             markeredgecolor="none",
-            markersize=8,
-        ),
-        Line2D(
-            [],
-            [],
-            marker=NEW_MARKER,
-            linestyle="none",
-            markerfacecolor=NEW_COLOR,
-            markeredgecolor="none",
-            markersize=9,
-        ),
+            markersize=9 if marker == NEW_MARKER else 8,
+        )
+        for _, color, marker in entries
     ]
-    labels = [
-        f"Also published here through {peak_year}",
-        f"New location after {peak_year}",
-    ]
+    labels = [label for label, _, _ in entries]
     ax.legend(
         handles,
         labels,
@@ -239,7 +244,11 @@ def plot_map(
 
     before_counts = coordinate_counts(before)
     after_counts = coordinate_counts(after)
-    after_existing, after_new = split_by_prior_presence(after_counts, before_counts)
+    before_nyc, before_other = split_by_city(before_counts)
+    after_nyc, after_other = split_by_city(after_counts)
+    after_other_existing, after_other_new = split_by_prior_presence(
+        after_other, before_other
+    )
     all_counts = np.concatenate(
         [before_counts["count"].to_numpy(), after_counts["count"].to_numpy()]
     )
@@ -250,20 +259,42 @@ def plot_map(
     )
     plot_panel(
         axes[0],
-        [(before_counts, EXISTING_COLOR, EXISTING_MARKER)],
+        [
+            (before_nyc, NYC_COLOR, NYC_MARKER),
+            (before_other, OTHER_COLOR, OTHER_MARKER),
+        ],
         all_counts,
         f"Through {peak_year} (NYC's peak share year)",
     )
     plot_panel(
         axes[1],
         [
-            (after_existing, EXISTING_COLOR, EXISTING_MARKER),
-            (after_new, NEW_COLOR, NEW_MARKER),
+            (after_nyc, NYC_COLOR, NYC_MARKER),
+            (after_other_existing, OTHER_COLOR, OTHER_MARKER),
+            (after_other_new, NEW_COLOR, NEW_MARKER),
         ],
         all_counts,
         f"After {peak_year}",
     )
-    add_color_legend(axes[1], peak_year)
+    add_category_legend(
+        axes[0],
+        [
+            ("New York City", NYC_COLOR, NYC_MARKER),
+            ("Other", OTHER_COLOR, OTHER_MARKER),
+        ],
+    )
+    add_category_legend(
+        axes[1],
+        [
+            ("New York City", NYC_COLOR, NYC_MARKER),
+            (
+                f"Other (also published here through {peak_year})",
+                OTHER_COLOR,
+                OTHER_MARKER,
+            ),
+            (f"New location after {peak_year}", NEW_COLOR, NEW_MARKER),
+        ],
+    )
 
     fig.subplots_adjust(top=0.93, bottom=0.09, hspace=0.2)
     add_size_legend(fig, all_counts)
@@ -310,18 +341,23 @@ def main() -> None:
 
     before_counts = coordinate_counts(before)
     after_counts = coordinate_counts(after)
-    after_existing, after_new = split_by_prior_presence(after_counts, before_counts)
+    before_nyc, before_other = split_by_city(before_counts)
+    after_nyc, after_other = split_by_city(after_counts)
+    after_other_existing, after_other_new = split_by_prior_presence(
+        after_other, before_other
+    )
 
     print(f"NYC peak share year: {peak_year}")
     print(
         f"Through {peak_year}: {len(before):,} US/CONUS records at "
-        f"{len(before_counts):,} unique coordinates"
+        f"{len(before_counts):,} unique coordinates "
+        f"({len(before_nyc):,} NYC, {len(before_other):,} Other)"
     )
     print(
         f"After {peak_year}: {len(after):,} US/CONUS records at "
         f"{len(after_counts):,} unique coordinates "
-        f"({len(after_existing):,} also active before the peak, "
-        f"{len(after_new):,} new)"
+        f"({len(after_nyc):,} NYC, {len(after_other_existing):,} Other "
+        f"also active before the peak, {len(after_other_new):,} new)"
     )
 
     plot_map(before, after, peak_year, args.output)
