@@ -14,13 +14,20 @@ everywhere else multiply and grow in the after panel. Unlike nyc_peak_map.py,
 there is no third "new location" category -- whether an Other coordinate
 already published before the peak isn't the point being illustrated, and
 dropping it removes a legend distinction that doesn't serve the story.
+
+Also writes a second, "_viridis" variant of the same two panels where color
+(not NYC/Other category) carries the record count at each coordinate, on a
+shared log-scaled viridis colorbar -- useful for spotting the single
+highest-volume coordinates in each period regardless of city.
 """
 
 import argparse
 from pathlib import Path
 
+import cartopy.crs as ccrs
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.colors import LogNorm
 
 import nyc_peak_map as npm
 import style
@@ -52,8 +59,8 @@ def plot_map(
     npm.plot_panel(
         axes[0],
         [
-            (before_nyc, npm.NYC_COLOR, npm.NYC_MARKER),
             (before_other, npm.OTHER_COLOR, npm.OTHER_MARKER),
+            (before_nyc, npm.NYC_COLOR, npm.NYC_MARKER),
         ],
         all_counts,
         f"{start_year}-{peak_year} (NYC peak) ({n_before:,} records)",
@@ -61,8 +68,8 @@ def plot_map(
     npm.plot_panel(
         axes[1],
         [
-            (after_nyc, npm.NYC_COLOR, npm.NYC_MARKER),
             (after_other, npm.OTHER_COLOR, npm.OTHER_MARKER),
+            (after_nyc, npm.NYC_COLOR, npm.NYC_MARKER),
         ],
         all_counts,
         f"{peak_year}-{end_year} ({n_after:,} records)",
@@ -77,6 +84,66 @@ def plot_map(
 
     fig.subplots_adjust(top=0.95, bottom=0.09, hspace=0.25)
     npm.add_size_legend(fig, all_counts)
+    style.save_figure(output_path)
+
+
+def plot_viridis_map(
+    before_counts,
+    after_counts,
+    all_counts: np.ndarray,
+    start_year: int,
+    peak_year: int,
+    end_year: int,
+    n_before: int,
+    n_after: int,
+    output_path: Path,
+) -> None:
+    """Same before/after panels, but color -- not NYC/Other category -- carries
+    the record count at each coordinate, on one shared log-scaled viridis
+    scale (log because counts span orders of magnitude). Point size still
+    scales with count too (same shared scale as plot_map), so low-count
+    points stay visible rather than shrinking to a single dark pixel."""
+    style.apply_style()
+    fig, axes = plt.subplots(
+        2, 1, figsize=(8, 9.5), subplot_kw={"projection": npm.make_projection()}
+    )
+    norm = LogNorm(vmin=all_counts.min(), vmax=all_counts.max())
+
+    panels = [
+        (
+            axes[0],
+            before_counts,
+            f"{start_year}-{peak_year} (NYC peak) ({n_before:,} records)",
+        ),
+        (axes[1], after_counts, f"{peak_year}-{end_year} ({n_after:,} records)"),
+    ]
+    mappable = None
+    for ax, counts, title in panels:
+        npm.add_basemap(ax)
+        # Sort NYC last so, within this single scatter call, its marker(s)
+        # draw on top of the surrounding Other points instead of wherever
+        # its coordinate happened to fall in groupby order.
+        counts = counts.sort_values("is_nyc")
+        sizes = npm.marker_size(counts["count"].to_numpy(), all_counts)
+        mappable = ax.scatter(
+            counts["llm_nominatim_lon"],
+            counts["llm_nominatim_lat"],
+            s=sizes,
+            c=counts["count"],
+            cmap="viridis",
+            norm=norm,
+            alpha=npm.POINT_ALPHA,
+            edgecolors="none",
+            transform=ccrs.PlateCarree(),
+            zorder=3,
+        )
+        ax.set_title(title)
+
+    fig.subplots_adjust(top=0.95, bottom=0.09, hspace=0.25, right=0.86)
+    cbar = fig.colorbar(
+        mappable, ax=axes.tolist(), orientation="vertical", fraction=0.035, pad=0.02
+    )
+    cbar.set_label("Records at coordinate")
     style.save_figure(output_path)
 
 
@@ -153,6 +220,19 @@ def main() -> None:
         len(before),
         len(after),
         args.output,
+    )
+
+    viridis_output = args.output.with_name(f"{args.output.stem}_viridis.png")
+    plot_viridis_map(
+        before_counts,
+        after_counts,
+        all_counts,
+        args.start_year,
+        peak_year,
+        args.end_year,
+        len(before),
+        len(after),
+        viridis_output,
     )
 
 
