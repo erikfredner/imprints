@@ -216,3 +216,160 @@ def test_cleaning_pipeline_top_level_class_and_single_place_conjunctions():
     assert out["target_classification"].tolist() == ["PS3553", "PR6053"]
     assert out["class_digits"].tolist() == [3553, 6053]
     assert len(out) == 2
+
+
+# ---------------------- 008 / 044 / 752 place extraction ----------------------
+
+
+def test_parse_place_code_008_extracts_bytes_15_17():
+    assert cl._parse_place_code_008("760729s1899    nyu           000 0 eng  ") == "nyu"
+
+
+def test_parse_place_code_008_guards_missing_or_short():
+    assert cl._parse_place_code_008(None) is None
+    assert cl._parse_place_code_008("") is None
+    assert cl._parse_place_code_008("760729s1899") is None  # too short
+
+
+def test_parse_place_code_008_guards_pandas_nan():
+    # Regression: a DataFrame column mixing present and missing field_008
+    # values stores the missing ones as float NaN (pandas' modern string
+    # dtype), not Python None -- `not field_008` doesn't catch that, and
+    # `len(nan)` raises. Single-value/single-row calls with a bare None
+    # don't reproduce this; a multi-row, mixed-presence column does.
+    s = pd.Series([None, "760729s1899    nyu           000 0 eng  "], name="field_008")
+    out = s.map(cl._parse_place_code_008)
+    assert pd.isna(out.iloc[0])
+    assert out.iloc[1] == "nyu"
+
+
+def test_decode_country_codes_order_preserving_with_unknown_gaps():
+    assert cl._decode_country_codes(["nyu", "zz9", "enk"]) == [
+        "New York (State)",
+        None,
+        "England",
+    ]
+    assert cl._decode_country_codes(None) is None
+    assert cl._decode_country_codes([]) == []
+
+
+def test_flatten_place_hierarchy_joins_in_fixed_order():
+    occurrences = [
+        {
+            "tag": "752",
+            "ind2": " ",
+            "subfields": [
+                ("d", "New York"),
+                ("a", "United States"),
+                ("b", "New York (State)"),
+            ],
+        },
+        {"tag": "752", "ind2": " ", "subfields": [("a", "England"), ("d", "London")]},
+        {"tag": "752", "ind2": " ", "subfields": []},  # no usable subfields
+    ]
+    assert cl._flatten_place_hierarchy(occurrences) == [
+        "United States, New York (State), New York",
+        "England, London",
+    ]
+    assert cl._flatten_place_hierarchy([]) is None
+    assert cl._flatten_place_hierarchy(None) is None
+
+
+def _record_with_marc_fields(
+    classifications,
+    places,
+    year,
+    field_008=None,
+    country_codes_044=None,
+    place_hierarchy_752=None,
+):
+    rec = _record(classifications, places, year)
+    rec["field_008"] = field_008
+    rec["country_codes_044"] = country_codes_044 or []
+    rec["place_hierarchy_752"] = place_hierarchy_752 or []
+    return rec
+
+
+def test_cleaning_pipeline_decodes_008_and_044():
+    df = pd.DataFrame(
+        [
+            _record_with_marc_fields(
+                ["PS3553"],
+                ["New York :"],
+                ["1980"],
+                field_008="760729s1899    nyu           000 0 eng  ",
+                country_codes_044=["nyu", "enk"],
+            )
+        ]
+    )
+    out = cl.cleaning_pipeline(df, cl.parse_range_spec("PS"))
+    assert (out["place_code_008"] == "nyu").all()
+    assert (out["place_name_008"] == "New York (State)").all()
+    assert out["country_names_044"].iloc[0] == ["New York (State)", "England"]
+
+
+def test_cleaning_pipeline_flattens_752():
+    df = pd.DataFrame(
+        [
+            _record_with_marc_fields(
+                ["PS3553"],
+                ["New York :"],
+                ["1980"],
+                place_hierarchy_752=[
+                    {
+                        "tag": "752",
+                        "ind2": " ",
+                        "subfields": [
+                            ("a", "United States"),
+                            ("b", "New York (State)"),
+                            ("d", "New York"),
+                        ],
+                    }
+                ],
+            )
+        ]
+    )
+    out = cl.cleaning_pipeline(df, cl.parse_range_spec("PS"))
+    assert out["place_752"].iloc[0] == ["United States, New York (State), New York"]
+
+
+def test_cleaning_pipeline_new_fields_do_not_affect_city_group():
+    # Capture-only scope: 008/044/752 must not change places/places_clean/
+    # city_group, even alongside a compound places value.
+    df = pd.DataFrame(
+        [
+            _record_with_marc_fields(
+                ["PS3553"],
+                ["Boston and New York :"],
+                ["1980"],
+                field_008="760729s1899    mau           000 0 eng  ",
+                country_codes_044=["mau"],
+            )
+        ]
+    )
+    out = cl.cleaning_pipeline(df, cl.parse_range_spec("PS"))
+    groups = sorted(out["city_group"].tolist())
+    assert groups == ["New York City", "Other"]
+    assert sorted(out["places"].tolist()) == ["Boston", "New York :"]
+
+
+def test_cleaning_pipeline_handles_mixed_missing_and_present_field_008():
+    # Regression: a multi-row DataFrame where some records have field_008
+    # and others don't must not crash cleaning_pipeline (see
+    # test_parse_place_code_008_guards_pandas_nan).
+    df = pd.DataFrame(
+        [
+            _record_with_marc_fields(["PS1"], ["New York :"], ["1980"]),
+            _record_with_marc_fields(
+                ["PS2"],
+                ["Boston :"],
+                ["1980"],
+                field_008="760729s1899    mau           000 0 eng  ",
+            ),
+        ]
+    )
+    out = cl.cleaning_pipeline(df, cl.parse_range_spec("PS"))
+    assert pd.isna(out["place_code_008"].iloc[0])
+    assert pd.isna(out["place_name_008"].iloc[0])
+    assert out["place_code_008"].iloc[1] == "mau"
+    assert out["place_name_008"].iloc[1] == "Massachusetts"

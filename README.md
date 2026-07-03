@@ -47,6 +47,31 @@ Two normalization choices about *place of publication* are worth noting:
   cities together (e.g. `"Boston and New York"`). `data_cleaning` splits these
   on `;`, `&`, and the word `and` so that a New York component is recognized.
 
+### Additional place-of-publication signal (008, 044, 752)
+
+Beyond the `260`/`264` `$a` text that drives `places`/`places_clean`/
+`city_group` above, the pipeline also captures three other MARC signals of
+place of publication, purely as extra columns for downstream use (e.g.
+geocoding cross-checks or filling gaps where `260`/`264` is missing or
+vague) — **none of these feed the NYC/Other classification**:
+
+- `place_code_008` / `place_name_008` — the coded place of publication at
+  008 bytes 15-17, decoded to a name.
+- `country_codes_044` / `country_names_044` — additional MARC country codes
+  from `044 $a`, decoded to names; `country_codes_044_iso` keeps `044 $c`
+  ISO codes raw (a different code system, not decoded here).
+- `place_hierarchy_752` / `place_752` — the hierarchical place name from
+  `752` (country › state/province › county › city › city subsection), kept
+  raw (structured) and flattened to a human-readable string.
+
+The 008/044 codes are decoded via `marc_country_codes.csv` at the repo
+root, generated from the Library of Congress's official "MARC List of
+Countries" (<https://www.loc.gov/standards/codelists/countries.xml>). It
+includes obsolete/historical codes (e.g. Soviet Union, Czechoslovakia,
+Yugoslavia) alongside current ones, since these MARC records span
+1945–2019 and older records may carry a code that was current at their own
+cataloging date.
+
 ## Tests
 
 ```bash

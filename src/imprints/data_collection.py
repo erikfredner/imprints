@@ -56,14 +56,15 @@ def collect_subfields(record):
     (0=production, 1=publication, 2=distribution, 3=manufacture,
     4=copyright). We keep place ($a) and publisher ($b) only for publication
     (blank or "1"); $c dates are kept regardless because a copyright year is a
-    valid publication-year proxy.
+    valid publication-year proxy. 044 (additional country/place codes) has no
+    such functional indicator, so all its $a/$c occurrences are kept.
     """
     buckets = {}
     for field in record:
         if _local_name(field.tag) != "datafield":
             continue
         tag = field.get("tag")
-        if tag not in ("010", "050", "090", "100", "245", "260", "264"):
+        if tag not in ("010", "044", "050", "090", "100", "245", "260", "264"):
             continue
         ind2 = field.get("ind2", " ")
         is_pub_264 = tag != "264" or ind2 in (" ", "1")
@@ -90,30 +91,35 @@ def _dedup(*lists):
 
 
 SUBJECT_GENRE_TAGS = ("600", "610", "611", "630", "650", "651", "655")
+PLACE_HIERARCHY_TAGS = ("752",)
 
 
-def collect_subject_occurrences(record):
-    """Walk a record's datafields, capturing each 600/610/611/630/650/651/655
-    occurrence as its own structured dict, in document order:
+def _collect_field_occurrences(record, tags):
+    """Walk a record's datafields, capturing each occurrence of a tag in
+    `tags` as its own structured dict, in document order:
         {"tag": str, "ind2": str, "subfields": [(code, text), ...]}
 
     Separate from collect_subfields(), which flattens every occurrence of a
     tag into one list per (tag, code) -- fine for fields the rest of the
     pipeline only ever needs the first/merged value from, but it loses which
-    subfields belonged to the same field instance. The secondary-literature
-    classifier needs that grouping (e.g. to compare a single 600's $a/$d
-    against the record's own 100, or to read a 650's $x/$v subdivision chain
-    as written). Repeated codes within one occurrence (two $x in one 650) are
-    kept in order, not deduped. All subfields present are captured, not
-    pre-filtered to a fixed code list, so rule logic owns which codes it
-    reads.
+    subfields belonged to the same field instance. Repeated codes within one
+    occurrence (e.g. two $x in one 650, or two $b in one 752) are kept in
+    order, not deduped. All subfields present are captured, not pre-filtered
+    to a fixed code list, so the caller owns which codes it reads.
+
+    Shared by collect_subject_occurrences() (subject/genre tags, where the
+    secondary-literature classifier needs to compare a single 600's $a/$d
+    against the record's own 100, or read a 650's $x/$v subdivision chain as
+    written) and collect_place_occurrences() (752's hierarchical
+    country/state/county/city subfields, which must stay grouped per
+    occurrence to be reconstructed in order).
     """
     occurrences = []
     for field in record:
         if _local_name(field.tag) != "datafield":
             continue
         tag = field.get("tag")
-        if tag not in SUBJECT_GENRE_TAGS:
+        if tag not in tags:
             continue
         subfields = []
         for sub in field:
@@ -127,6 +133,27 @@ def collect_subject_occurrences(record):
             {"tag": tag, "ind2": field.get("ind2", " "), "subfields": subfields}
         )
     return occurrences
+
+
+def collect_subject_occurrences(record):
+    """Each 600/610/611/630/650/651/655 occurrence as its own structured
+    dict. See _collect_field_occurrences() for the shape and rationale."""
+    return _collect_field_occurrences(record, SUBJECT_GENRE_TAGS)
+
+
+def collect_place_occurrences(record):
+    """Each 752 (hierarchical place name) occurrence as its own structured
+    dict. See _collect_field_occurrences() for the shape and rationale.
+
+    752 is repeatable and hierarchical ($a country, $b first-order
+    jurisdiction/state, $c intermediate jurisdiction/county, $d city, $e city
+    subsection); flattening into collect_subfields()'s flat (tag, code)
+    bucket would lose which subfields belong to the same occurrence when a
+    record has more than one 752 (e.g. one for place of publication, one for
+    something else). Not added to collect_subfields()'s tag allowlist for
+    this reason, mirroring how the subject/genre tags are excluded from it.
+    """
+    return _collect_field_occurrences(record, PLACE_HIERARCHY_TAGS)
 
 
 def extract_008(record):
@@ -235,14 +262,24 @@ def process_record(record, class_range):
         "places": places,
         "publishers": publishers,
         "first_author": personal_name_100[0] if personal_name_100 else None,
-        # Fields below support imprints.secondary_classification and are
-        # otherwise unused by the rest of the pipeline.
+        # local_call_numbers/first_author_dates/subject_genre_fields support
+        # imprints.secondary_classification. field_008 supports that module
+        # (literary form byte) *and* imprints.data_cleaning (place-of-
+        # publication code at bytes 15-17) -- byte interpretation is owned by
+        # those consumers, not here (see extract_008's docstring).
         "local_call_numbers": local_call_numbers,
         "first_author_dates": personal_name_100_dates[0]
         if personal_name_100_dates
         else None,
         "subject_genre_fields": collect_subject_occurrences(record),
         "field_008": extract_008(record),
+        # Additional place-of-publication signal beyond 260/264 $a text:
+        # 044 country/place codes and 752 hierarchical place names. Decoding
+        # these codes to human-readable names happens downstream in
+        # imprints.data_cleaning, not here.
+        "country_codes_044": buckets.get(("044", "a"), []),
+        "country_codes_044_iso": buckets.get(("044", "c"), []),
+        "place_hierarchy_752": collect_place_occurrences(record),
     }
     return data
 

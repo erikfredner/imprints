@@ -4,6 +4,8 @@ import pickle
 import re
 from functools import lru_cache
 
+from imprints.marc_places import decode_marc_country
+
 NYC_VARIANTS_PATH = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "..", "..", "nyc_variants.txt")
 )
@@ -162,6 +164,49 @@ def get_decade(year):
         return (year // 10) * 10 if year > 0 else None
     except (TypeError, ValueError):
         return None
+
+
+def _parse_place_code_008(field_008):
+    """Return the 3-character MARC place-of-publication code at 0-indexed
+    bytes 15-17, or None if field_008 is missing/short. Never raises.
+    Mirrors imprints.secondary_classification._parse_008's guard convention
+    (kept independent rather than imported, since that module is calibrated
+    specifically for PS-range secondary-literature classification)."""
+    if field_008 is None or (isinstance(field_008, float) and pd.isna(field_008)):
+        return None
+    if not field_008 or len(field_008) != 40:
+        return None
+    return field_008[15:18]
+
+
+def _decode_country_codes(codes):
+    """Order-preserving decode of a list of MARC country codes to names.
+    Unrecognized codes decode to None (not dropped), so gaps stay visible
+    for QA rather than being silently absorbed. None input -> None."""
+    if codes is None:
+        return None
+    return [decode_marc_country(c) for c in codes]
+
+
+_PLACE_752_CODES_ORDER = ("a", "b", "c", "d", "e")
+
+
+def _flatten_place_hierarchy(occurrences):
+    """Turn a list of 752 occurrence dicts (imprints.data_collection.
+    collect_place_occurrences shape) into a list of human-readable strings,
+    one per occurrence, joining $a/$b/$c/$d/$e (country > state/province >
+    county > city > city subsection) in that fixed hierarchical order
+    regardless of the order subfields appeared in the record. Occurrences
+    with no usable subfields are skipped. None/empty input -> None."""
+    if not occurrences:
+        return None
+    flattened = []
+    for occ in occurrences:
+        by_code = dict(occ.get("subfields", []))
+        parts = [by_code[c] for c in _PLACE_752_CODES_ORDER if c in by_code]
+        if parts:
+            flattened.append(", ".join(parts))
+    return flattened or None
 
 
 def clean_string(s):
@@ -346,6 +391,21 @@ def cleaning_pipeline(df, class_range):
     df["year_min"] = df[["year_int", "publisher_year_int"]].min(axis=1)
     df["decade"] = df["year_min"].map(get_decade)
     df["publisher_clean"] = df["publisher_first"].map(clean_string)
+
+    # Additional place-of-publication signal beyond 260/264 $a text (008
+    # place code, 044 country codes, 752 hierarchical place name). Purely
+    # additive/independent columns -- they do not feed places/places_clean/
+    # city_group. Guarded on column presence for backward compatibility with
+    # pickles produced before these fields were collected.
+    if "field_008" in df.columns:
+        df["place_code_008"] = df["field_008"].map(_parse_place_code_008)
+        df["place_name_008"] = df["place_code_008"].map(decode_marc_country)
+
+    if "country_codes_044" in df.columns:
+        df["country_names_044"] = df["country_codes_044"].map(_decode_country_codes)
+
+    if "place_hierarchy_752" in df.columns:
+        df["place_752"] = df["place_hierarchy_752"].map(_flatten_place_hierarchy)
 
     # Explode on 'places' (each component city gets its own row). Compound
     # subfields like "Boston and New York" are split first so NYC is counted.

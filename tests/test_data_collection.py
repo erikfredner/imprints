@@ -283,6 +283,109 @@ def test_process_record_adds_new_fields_without_changing_existing_keys():
     ]
 
 
+# ---------------------- 044 / 752 place extraction ----------------------
+
+
+def test_collect_subfields_captures_044_country_codes():
+    rec = make_record(
+        [("044", " ", [("a", "nyu"), ("a", "enk"), ("c", "us"), ("c", "uk")])]
+    )
+    buckets = dc.collect_subfields(rec)
+    assert buckets[("044", "a")] == ["nyu", "enk"]
+    assert buckets[("044", "c")] == ["us", "uk"]
+
+
+def test_process_record_no_044_yields_empty_lists():
+    rec = make_record([("245", "0", [("a", "Title /")])])
+    data = dc.process_record(rec, dc.parse_range_spec("PS"))
+    assert data["country_codes_044"] == []
+    assert data["country_codes_044_iso"] == []
+
+
+def test_collect_place_occurrences_groups_by_field_instance():
+    rec = make_record(
+        [
+            (
+                "752",
+                " ",
+                [("a", "United States"), ("b", "New York (State)"), ("d", "New York")],
+            ),
+            ("752", " ", [("a", "England"), ("d", "London")]),
+        ]
+    )
+    occs = dc.collect_place_occurrences(rec)
+    assert len(occs) == 2
+    assert occs[0]["subfields"] == [
+        ("a", "United States"),
+        ("b", "New York (State)"),
+        ("d", "New York"),
+    ]
+    assert occs[1]["subfields"] == [("a", "England"), ("d", "London")]
+
+
+def test_collect_place_occurrences_ignores_non_place_tags():
+    rec = make_record([("700", " ", [("a", "Added entry")])])
+    assert dc.collect_place_occurrences(rec) == []
+
+
+def test_collect_place_occurrences_preserves_repeated_subfield_codes_within_occurrence():
+    rec = make_record(
+        [
+            (
+                "752",
+                " ",
+                [("a", "United States"), ("b", "New York (State)"), ("b", "Kings")],
+            )
+        ]
+    )
+    occs = dc.collect_place_occurrences(rec)
+    assert len(occs) == 1
+    assert occs[0]["subfields"] == [
+        ("a", "United States"),
+        ("b", "New York (State)"),
+        ("b", "Kings"),
+    ]
+
+
+def test_process_record_no_752_yields_empty_list():
+    rec = make_record([("245", "0", [("a", "Title /")])])
+    data = dc.process_record(rec, dc.parse_range_spec("PS"))
+    assert data["place_hierarchy_752"] == []
+
+
+def test_process_record_captures_044_and_752_together():
+    rec = make_record(
+        [
+            ("050", "0", [("a", "PS2132")]),
+            ("044", " ", [("a", "nyu"), ("c", "us")]),
+            (
+                "752",
+                " ",
+                [("a", "United States"), ("b", "New York (State)"), ("d", "New York")],
+            ),
+            ("752", " ", [("a", "England"), ("d", "London")]),
+            ("264", "1", [("a", "Boston :"), ("c", "[1899]")]),
+        ]
+    )
+    data = dc.process_record(rec, dc.parse_range_spec("PS"))
+
+    assert data["country_codes_044"] == ["nyu"]
+    assert data["country_codes_044_iso"] == ["us"]
+    assert len(data["place_hierarchy_752"]) == 2
+    assert data["place_hierarchy_752"][0]["subfields"] == [
+        ("a", "United States"),
+        ("b", "New York (State)"),
+        ("d", "New York"),
+    ]
+    assert data["place_hierarchy_752"][1]["subfields"] == [
+        ("a", "England"),
+        ("d", "London"),
+    ]
+    # Pre-existing keys unaffected.
+    assert data["places"] == ["Boston :"]
+    assert data["year"] == ["[1899]"]
+
+
 def test_parse_records_drops_processed_siblings(tmp_path, marc_gz_writer):
     # The memory fix deletes already-processed <record> nodes from the tree.
     # (For a tiny in-memory file lxml buffers the whole document up front, so
