@@ -38,11 +38,32 @@ YEAR_START = npm.YEAR_START
 YEAR_END = npm.YEAR_END
 
 
+def plot_panel_by_count(
+    ax,
+    counts,
+    all_counts: np.ndarray,
+    title: str,
+) -> None:
+    """Draw one NYC/Other panel as contiguous runs of same-category points in
+    ascending count order, so points with more records always render on top --
+    no category (e.g. NYC) is special-cased to draw last regardless of size."""
+    npm.add_basemap(ax)
+    ordered = counts.sort_values("count")
+    run_id = (ordered["is_nyc"] != ordered["is_nyc"].shift()).cumsum()
+    for _, run in ordered.groupby(run_id):
+        is_nyc = run["is_nyc"].iat[0]
+        color, marker = (
+            (npm.NYC_COLOR, npm.NYC_MARKER)
+            if is_nyc
+            else (npm.OTHER_COLOR, npm.OTHER_MARKER)
+        )
+        npm.scatter_coords(ax, run, all_counts, color, marker)
+    ax.set_title(title)
+
+
 def plot_map(
-    before_nyc,
-    before_other,
-    after_nyc,
-    after_other,
+    before_counts,
+    after_counts,
     all_counts: np.ndarray,
     start_year: int,
     peak_year: int,
@@ -56,21 +77,15 @@ def plot_map(
         2, 1, figsize=(8, 9.5), subplot_kw={"projection": npm.make_projection()}
     )
 
-    npm.plot_panel(
+    plot_panel_by_count(
         axes[0],
-        [
-            (before_other, npm.OTHER_COLOR, npm.OTHER_MARKER),
-            (before_nyc, npm.NYC_COLOR, npm.NYC_MARKER),
-        ],
+        before_counts,
         all_counts,
         f"{start_year}-{peak_year} (NYC peak) ({n_before:,} records)",
     )
-    npm.plot_panel(
+    plot_panel_by_count(
         axes[1],
-        [
-            (after_other, npm.OTHER_COLOR, npm.OTHER_MARKER),
-            (after_nyc, npm.NYC_COLOR, npm.NYC_MARKER),
-        ],
+        after_counts,
         all_counts,
         f"{peak_year}-{end_year} ({n_after:,} records)",
     )
@@ -120,10 +135,10 @@ def plot_viridis_map(
     mappable = None
     for ax, counts, title in panels:
         npm.add_basemap(ax)
-        # Sort NYC last so, within this single scatter call, its marker(s)
-        # draw on top of the surrounding Other points instead of wherever
-        # its coordinate happened to fall in groupby order.
-        counts = counts.sort_values("is_nyc")
+        # Sort ascending by count so, within this single scatter call, the
+        # highest-count coordinates draw on top rather than whichever
+        # category happens to plot last.
+        counts = counts.sort_values("count")
         sizes = npm.marker_size(counts["count"].to_numpy(), all_counts)
         mappable = ax.scatter(
             counts["llm_nominatim_lon"],
@@ -144,6 +159,7 @@ def plot_viridis_map(
         mappable, ax=axes.tolist(), orientation="vertical", fraction=0.035, pad=0.02
     )
     cbar.set_label("Records at coordinate")
+    npm.add_size_legend(fig, all_counts)
     style.save_figure(output_path)
 
 
@@ -209,10 +225,8 @@ def main() -> None:
     )
 
     plot_map(
-        before_nyc,
-        before_other,
-        after_nyc,
-        after_other,
+        before_counts,
+        after_counts,
         all_counts,
         args.start_year,
         peak_year,
