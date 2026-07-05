@@ -11,10 +11,19 @@ PS/American-literature context plus both the cleaned and original place
 strings as evidence, and to return a `null` guess rather than a fabricated
 one when the evidence doesn't clearly support a real place of publication.
 
-Takes the same per-unique-place rows `geocode_sample.py` produces (grouped by
-`places_clean`, with a representative `places_original_example` and
-`n_records` count) and carries the `nominatim_*` columns through to the
-output so LLM and Nominatim guesses can be reviewed side by side.
+Takes the same per-group rows `geocode_sample.py` produces (grouped by
+`geo_key` -- `places_clean` plus the decoded MARC 008 place-of-publication
+code, `place_name_008`, via `imprints.place_keys` -- with a representative
+`places_original_example` and `n_records` count) and carries the
+`nominatim_*` columns through to the output so LLM and Nominatim guesses can
+be reviewed side by side.
+
+When `place_name_008` (and, rarely, `place_752`) is available for a group,
+it's passed to the model as an explicit hint: a structured MARC cataloging
+signal, not free text, present on ~94% of PS-range records and shown to
+correctly split ambiguous bare city names (e.g. "Athens" as Georgia, Ohio,
+or Illinois) that the model's generic "prefer a US reading" heuristic alone
+gets wrong more often than not.
 
 Resumable like `geocode_sample.py`: results are appended to --output_csv one
 row at a time as they're produced, and on startup any places_clean values
@@ -49,6 +58,8 @@ from dotenv import load_dotenv
 from openai import APIError, OpenAI
 from pydantic import BaseModel, Field
 
+from imprints import place_keys
+
 INSTRUCTIONS = """\
 You are normalizing places of publication extracted from Library of \
 Congress MARC catalog records in the PS classification range (American/US \
@@ -75,10 +86,20 @@ common and expected.
 If the input is too garbled, generic ("various places", "s l", "n p"), or \
 does not clearly correspond to a real, identifiable place, return null \
 rather than guessing.
+
+A `marc_008_place_hint` or `marc_752_place_hint`, when given, comes from a \
+structured MARC cataloging field (not free text) and should be treated as \
+strong, authoritative corroborating evidence -- prefer it over the general \
+US-reading heuristic above when the two would otherwise conflict. For \
+example, if places_clean is "athens" and marc_008_place_hint is "Ohio", \
+answer "athens, ohio" rather than defaulting to "athens, greece".
 """
 
 OUTPUT_FIELDS = [
+    "geo_key",
     "places_clean",
+    "place_name_008",
+    "place_752",
     "places_original_example",
     "n_records",
     "nominatim_found",
@@ -104,17 +125,24 @@ class PlaceNormalization(BaseModel):
 
 
 def already_processed(output_csv):
-    """Return the set of places_clean values already recorded in output_csv."""
+    """Return the set of geo_key values already recorded in output_csv."""
     if not os.path.exists(output_csv) or os.path.getsize(output_csv) == 0:
         return set()
-    done = pd.read_csv(output_csv, usecols=["places_clean"])
-    return set(done["places_clean"].astype(str))
+    done = pd.read_csv(output_csv, usecols=["geo_key"])
+    return set(done["geo_key"].astype(str))
 
 
 def normalize_place(
-    client, model, places_clean, places_original_example, max_retries=3
+    client,
+    model,
+    places_clean,
+    places_original_example,
+    place_name_008=None,
+    place_752=None,
+    max_retries=3,
 ):
-    """Ask the model for a normalized place guess for one places_clean value.
+    """Ask the model for a normalized place guess for one (places_clean,
+    place_name_008) group.
 
     Returns the parsed normalized_place string (or None). Raises
     openai.APIError after max_retries so the caller can stop the run rather
@@ -124,6 +152,9 @@ def normalize_place(
         f"places_clean: {places_clean}\n"
         f"places_original_example: {places_original_example!r}"
     )
+    hint = place_keys.build_place_hint(place_name_008, place_752)
+    if hint:
+        user_input = f"{user_input}\n{hint}"
 
     for attempt in range(max_retries):
         try:
@@ -144,7 +175,10 @@ def normalize_place(
 
 def _row_to_output(row, model, llm_normalized_place):
     return {
+        "geo_key": row["geo_key"],
         "places_clean": row["places_clean"],
+        "place_name_008": row.get("place_name_008"),
+        "place_752": row.get("place_752"),
         "places_original_example": row["places_original_example"],
         "n_records": row["n_records"],
         "nominatim_found": row.get("nominatim_found"),
@@ -164,11 +198,11 @@ def run(input_csv, output_csv, model, sample_size, seed, limit, concurrency):
     df = pd.read_csv(input_csv)
 
     if sample_size is not None:
-        df = df.sample(n=sample_size, random_state=seed).sort_values("places_clean")
+        df = df.sample(n=sample_size, random_state=seed).sort_values("geo_key")
         print(f"Drew a random sample of {len(df)} places (seed={seed}).")
 
     done = already_processed(output_csv)
-    remaining = df[~df["places_clean"].astype(str).isin(done)]
+    remaining = df[~df["geo_key"].astype(str).isin(done)]
     print(f"{len(done)} already done, {len(remaining)} remaining.")
 
     if limit is not None:
@@ -199,6 +233,8 @@ def run(input_csv, output_csv, model, sample_size, seed, limit, concurrency):
                 model,
                 row["places_clean"],
                 row["places_original_example"],
+                row.get("place_name_008"),
+                row.get("place_752"),
             ): row
             for _, row in remaining.iterrows()
         }
@@ -206,7 +242,7 @@ def run(input_csv, output_csv, model, sample_size, seed, limit, concurrency):
         try:
             for future in as_completed(futures):
                 row = futures[future]
-                place = row["places_clean"]
+                place = row["geo_key"]
                 try:
                     llm_normalized_place = future.result()
                 except Exception as e:

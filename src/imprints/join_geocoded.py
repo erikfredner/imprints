@@ -2,12 +2,16 @@
 Join cleaned PS records with their geocoded places of publication.
 
 Left-merges `data/PS/data.csv` (record-level, one row per place of
-publication) onto `data/PS/llm_geocode_nominatim.csv` (one row per unique
-`places_clean` value, produced by `imprints.geocode_sample llm` from
-`imprints.llm_geocode`'s output) on the `places_clean` join key. The two are
-keyed identically -- `geocode_sample` reads `places_clean` straight out of
-`data.csv` without further normalization -- so this is a plain exact-match
-merge, many-to-one from data.csv's side.
+publication) onto `data/PS/llm_geocode_nominatim.csv` (one row per
+`geo_key` group, produced by `imprints.geocode_sample llm` from
+`imprints.llm_geocode`'s output) on the `geo_key` join key --
+`places_clean` plus the decoded MARC 008 place-of-publication code
+(`place_name_008`), via `imprints.place_keys.build_geo_key`. Both sides
+build the key identically from the same two source columns, so this is a
+plain exact-match merge, many-to-one from data.csv's side. Grouping on
+`places_clean` alone would conflate records that share an ambiguous bare
+city name (e.g. "Athens") but differ in 008 place code -- and therefore in
+true location.
 
 Coordinates come from the `llm_nominatim_*` columns: Nominatim results for
 the LLM-normalized place name, not the raw `places_clean` string.
@@ -27,10 +31,13 @@ import argparse
 
 import pandas as pd
 
+from imprints import place_keys
+
 OUTPUT_COLUMNS = [
     "lccn",
     "year_min",
     "places_clean",
+    "place_name_008",
     "city_group",
     "llm_nominatim_lat",
     "llm_nominatim_lon",
@@ -39,36 +46,47 @@ OUTPUT_COLUMNS = [
 
 
 def load_data(input_csv: str) -> pd.DataFrame:
-    """Load the record-level columns needed for the join and downstream use."""
-    return pd.read_csv(
-        input_csv, usecols=["lccn", "year_min", "places_clean", "city_group"]
-    )
+    """Load the record-level columns needed for the join and downstream use,
+    and compute geo_key. Missing place_name_008 (older data.csv, pre-008
+    capture) is treated as all-missing, so the key falls back to
+    places_clean alone -- consistent with imprints.geocode_sample."""
+    header = pd.read_csv(input_csv, nrows=0)
+    wanted = ["lccn", "year_min", "places_clean", "city_group", "place_name_008"]
+    usecols = [c for c in wanted if c in header.columns]
+    df = pd.read_csv(input_csv, usecols=usecols)
+    if "place_name_008" not in df.columns:
+        df["place_name_008"] = None
+    df["geo_key"] = [
+        place_keys.build_geo_key(pc, p8)
+        for pc, p8 in zip(df["places_clean"], df["place_name_008"])
+    ]
+    return df
 
 
 def load_nominatim(nominatim_csv: str) -> pd.DataFrame:
-    """Load the per-unique-place LLM-normalized geocoding results."""
+    """Load the per-geo_key-group LLM-normalized geocoding results."""
     df = pd.read_csv(
         nominatim_csv,
         usecols=[
-            "places_clean",
+            "geo_key",
             "llm_nominatim_found",
             "llm_nominatim_country_code",
             "llm_nominatim_lat",
             "llm_nominatim_lon",
         ],
     )
-    if df["places_clean"].duplicated().any():
+    if df["geo_key"].duplicated().any():
         raise ValueError(
-            f"{nominatim_csv} has duplicate places_clean values; expected "
-            "one row per unique place."
+            f"{nominatim_csv} has duplicate geo_key values; expected one "
+            "row per unique (places_clean, place_name_008) group."
         )
     return df
 
 
 def join(data_df: pd.DataFrame, nominatim_df: pd.DataFrame) -> pd.DataFrame:
-    """Left-merge data_df onto nominatim_df on places_clean, keeping every
+    """Left-merge data_df onto nominatim_df on geo_key, keeping every
     data_df row (including unmatched/non-US ones)."""
-    merged = data_df.merge(nominatim_df, on="places_clean", how="left")
+    merged = data_df.merge(nominatim_df, on="geo_key", how="left")
     return merged[OUTPUT_COLUMNS]
 
 
