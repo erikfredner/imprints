@@ -1,0 +1,253 @@
+"""
+Build and read the crosswalk from decoded MARC place-of-publication names
+(`place_name_008`, see `imprints.marc_places`/`imprints.data_cleaning`) to a
+GeoNames geocoding scope: a `(geonames_country_code, geonames_admin1_code)`
+pair, `geonames_admin1_code` being `None` for a bare country-level value.
+
+`place_name_008` takes only 72 distinct values across the whole PS-range
+corpus (checked against `data/PS/data.csv`), and every one of them is either
+a whole-country name (`United States`, `Canada`, `United Kingdom`,
+`Australia`) or a first-order administrative division of one of those four
+countries (US states/DC, Canadian provinces, UK constituent countries, a
+handful of Australian states). That makes this a small, closed crosswalk
+worth freezing as a reviewable file rather than re-deriving it at every run
+-- the same "generate once, review, freeze" treatment as `nyc_variants.txt`
+and `marc_country_codes.csv`.
+
+Building it (`build_crosswalk`) needs GeoNames' `admin1CodesASCII.txt`
+(download from https://download.geonames.org/export/dump/ into
+`data/geonames/`) to look up each administrative division by name -- admin1
+codes are NOT a simple derived format (US uses postal codes like `US.GA`,
+but Canada and Australia use small country-specific integers like `CA.10`
+for Quebec), so they must come from that reference file, not be guessed.
+
+MARC decodes some names with a disambiguating parenthetical, e.g.
+`"New York (State)"` or `"Quebec (Province)"` (accented `"Québec (Province)"`
+also occurs) -- these are stripped, and names are matched against
+GeoNames' `asciiname` column (already diacritic-free) so a MARC name
+carrying an accent still matches.
+
+Usage (regenerate the frozen crosswalk from the current corpus):
+    python -m imprints.marc_place_geonames \\
+        --data_csv data/PS/data.csv \\
+        --admin1_codes data/geonames/admin1CodesASCII.txt \\
+        --countries US,CA,GB,AU \\
+        --output_csv marc_place_008_geonames.csv
+"""
+
+import argparse
+import csv
+import os
+import re
+import unicodedata
+from functools import lru_cache
+
+CROSSWALK_PATH = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "..", "marc_place_008_geonames.csv")
+)
+
+# Bare country-level place names -> GeoNames country code. These are
+# permanent ISO-standard codes, not GeoNames-version-dependent, so
+# hardcoding them (unlike admin1 codes) is safe. Keyed case-insensitively
+# since callers include imprints.llm_geocode's lowercase LLM output as well
+# as Title Case MARC-decoded names.
+_COUNTRY_NAME_TO_CODE_CI = {
+    "united states": "US",
+    "canada": "CA",
+    "united kingdom": "GB",
+    "australia": "AU",
+}
+
+# Only these two qualifiers are stripped -- both mark an admin1-level name
+# disambiguated from an identically-named country ("New York (State)" vs. no
+# country of that name; "Georgia" the US state is NOT qualified, precisely
+# because MARC instead qualifies the *country* as "Georgia (Republic)"). A
+# qualifier like "(Republic)" must NOT be stripped the same way: doing so
+# would erase the very distinction it encodes and misresolve a country as an
+# admin1 (e.g. "Georgia (Republic)" -> "Georgia" -> US.GA). Any other
+# qualifier is left as-is, which will correctly fail to resolve and surface
+# as a warning rather than silently mismapping.
+_STRIPPABLE_QUALIFIERS = ("state", "province")
+_QUALIFIER_RE = re.compile(r"\s*\(([^)]*)\)\s*$")
+
+
+def _strip_qualifier(name):
+    """Drop a trailing "(State)"/"(Province)" MARC qualifier, e.g.
+    "New York (State)" -> "New York". Other qualifiers (e.g. "(Republic)")
+    are left in place -- see _STRIPPABLE_QUALIFIERS."""
+    match = _QUALIFIER_RE.search(name)
+    if match and match.group(1).strip().lower() in _STRIPPABLE_QUALIFIERS:
+        return name[: match.start()].strip()
+    return name
+
+
+def _normalize_for_match(name):
+    """Lowercase, strip diacritics (so "Quebec" and "Québec" compare equal),
+    and collapse whitespace. Used to compare MARC-decoded names against
+    GeoNames' asciiname column."""
+    ascii_name = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode()
+    return " ".join(ascii_name.lower().split())
+
+
+def load_admin1_names(admin1_codes_path, countries):
+    """Return {(country_code, normalized_asciiname): admin1_code} restricted
+    to the given country codes. Shared by this module's crosswalk builder and
+    by imprints.geonames_geocode's llm-mode scope resolution."""
+    countries = set(countries)
+    names = {}
+    with open(admin1_codes_path, encoding="utf-8") as f:
+        for line in f:
+            code, _name, asciiname, _geonameid = line.rstrip("\n").split("\t")
+            country_code, admin1_code = code.split(".", 1)
+            if country_code not in countries:
+                continue
+            names[(country_code, _normalize_for_match(asciiname))] = admin1_code
+    return names
+
+
+def resolve_scope_by_name(name, admin1_names, countries):
+    """Resolve a bare geographic name (a MARC name with any disambiguating
+    qualifier already stripped, or an LLM-normalized state/country segment)
+    to a GeoNames scope: (country_code, admin1_code_or_None).
+
+    Returns None if `name` matches neither a known country name nor an
+    admin1 name in any of `countries`. Raises ValueError if it matches
+    admin1 names in more than one of `countries` -- true ambiguity, left for
+    the caller to decide how to handle rather than silently picking one.
+    """
+    lname = name.strip().lower()
+    if lname in _COUNTRY_NAME_TO_CODE_CI:
+        return _COUNTRY_NAME_TO_CODE_CI[lname], None
+
+    key = _normalize_for_match(name)
+    matches = [cc for cc in countries if (cc, key) in admin1_names]
+
+    if not matches:
+        return None
+    if len(matches) > 1:
+        raise ValueError(f"matches admin1 names in {matches}")
+    country_code = matches[0]
+    return country_code, admin1_names[(country_code, key)]
+
+
+def _resolve_one(place_name_008, admin1_names, countries):
+    """Return (country_code, admin1_code_or_None, note) for a single
+    place_name_008 value. note is None on a clean resolution, else a short
+    string describing why manual review is needed (unresolved/ambiguous)."""
+    bare = _strip_qualifier(place_name_008)
+    try:
+        scope = resolve_scope_by_name(bare, admin1_names, countries)
+    except ValueError as e:
+        return None, None, f"ambiguous: {e}"
+    if scope is None:
+        return (
+            None,
+            None,
+            "unresolved: no matching admin1 name in " + ",".join(sorted(countries)),
+        )
+    return scope[0], scope[1], None
+
+
+def build_crosswalk(place_names_008, admin1_codes_path, countries):
+    """Resolve every value in place_names_008 (an iterable of decoded
+    MARC place names, e.g. data.csv's place_name_008 column) to a GeoNames
+    scope. Returns a list of row dicts (place_name_008, geonames_country_code,
+    geonames_admin1_code), sorted by place_name_008. Unresolved/ambiguous
+    values get blank country/admin1 fields -- never a fabricated guess -- and
+    are printed as warnings for manual review."""
+    admin1_names = load_admin1_names(admin1_codes_path, countries)
+    rows = []
+    for place_name in sorted(set(place_names_008)):
+        country_code, admin1_code, note = _resolve_one(
+            place_name, admin1_names, countries
+        )
+        if note:
+            print(f"WARNING: {place_name!r} {note}")
+        rows.append(
+            {
+                "place_name_008": place_name,
+                "geonames_country_code": country_code or "",
+                "geonames_admin1_code": admin1_code or "",
+            }
+        )
+    return rows
+
+
+def write_crosswalk(rows, output_csv):
+    with open(output_csv, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(
+            f,
+            fieldnames=[
+                "place_name_008",
+                "geonames_country_code",
+                "geonames_admin1_code",
+            ],
+        )
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+@lru_cache(maxsize=1)
+def _load_frozen_crosswalk(crosswalk_path):
+    if not os.path.exists(crosswalk_path):
+        return {}
+    with open(crosswalk_path, encoding="utf-8", newline="") as f:
+        scope = {}
+        for row in csv.DictReader(f):
+            country = row["geonames_country_code"] or None
+            admin1 = row["geonames_admin1_code"] or None
+            if country:
+                scope[row["place_name_008"]] = (country, admin1)
+        return scope
+
+
+def resolve_geo_scope(place_name_008, crosswalk_path=CROSSWALK_PATH):
+    """Look up the frozen crosswalk for a decoded place_name_008 value.
+
+    Returns (geonames_country_code, geonames_admin1_code_or_None), or None if
+    place_name_008 is missing/blank or has no resolved entry in the
+    crosswalk (unmapped/ambiguous values are recorded with blank fields, see
+    build_crosswalk)."""
+    if not place_name_008 or (
+        isinstance(place_name_008, float) and place_name_008 != place_name_008
+    ):
+        return None
+    return _load_frozen_crosswalk(crosswalk_path).get(place_name_008)
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Build the MARC place_name_008 -> GeoNames scope crosswalk "
+        "from the distinct place_name_008 values in a cleaned imprints CSV."
+    )
+    parser.add_argument("--data_csv", default="data/PS/data.csv")
+    parser.add_argument(
+        "--admin1_codes",
+        default="data/geonames/admin1CodesASCII.txt",
+        help="Path to GeoNames' admin1CodesASCII.txt.",
+    )
+    parser.add_argument(
+        "--countries",
+        default="US,CA,GB,AU",
+        help="Comma-separated GeoNames country codes to resolve admin1 names "
+        "against (default: the countries observed in the PS-range corpus).",
+    )
+    parser.add_argument("--output_csv", default=CROSSWALK_PATH)
+    args = parser.parse_args()
+
+    import pandas as pd
+
+    df = pd.read_csv(args.data_csv, usecols=["place_name_008"])
+    place_names = df["place_name_008"].dropna().unique()
+    countries = [c.strip() for c in args.countries.split(",") if c.strip()]
+
+    rows = build_crosswalk(place_names, args.admin1_codes, countries)
+    write_crosswalk(rows, args.output_csv)
+
+    n_resolved = sum(1 for r in rows if r["geonames_country_code"])
+    print(f"Resolved {n_resolved}/{len(rows)} place_name_008 values.")
+    print(f"Wrote {len(rows)} rows to {args.output_csv}")
+
+
+if __name__ == "__main__":
+    main()

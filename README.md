@@ -72,6 +72,85 @@ Yugoslavia) alongside current ones, since these MARC records span
 1945–2019 and older records may carry a code that was current at their own
 cataloging date.
 
+## Geocoding
+
+Places of publication are geocoded in two passes. The primary pass matches
+`places_clean` directly against a local GeoNames gazetteer, scoped by
+`place_name_008` (e.g. a bare "athens" is looked up only among Georgia
+places when `place_name_008` is "Georgia") — free, deterministic, and, since
+`place_name_008` is present on ~94% of PS-range records, enough to resolve
+~90% of records without any API call. Only what that pass can't resolve
+(no `place_name_008`, or no gazetteer match in scope) falls through to the
+existing Nominatim + LLM-normalization pipeline.
+
+### GeoNames reference data
+
+Download into `data/geonames/` (not committed, like the raw MARC dump):
+
+```bash
+mkdir -p data/geonames && cd data/geonames
+curl -fsSL -o admin1CodesASCII.txt https://download.geonames.org/export/dump/admin1CodesASCII.txt
+for cc in US CA GB AU; do
+    curl -fsSL -o "${cc}.zip" "https://download.geonames.org/export/dump/${cc}.zip"
+    unzip -o "${cc}.zip" "${cc}.txt"
+    rm "${cc}.zip"
+done
+```
+
+The four country codes above are the ones actually needed for the PS-range
+corpus — every distinct `place_name_008` value in it is a US state/DC, a
+Canadian province, a UK constituent country, or one of a few Australian
+states (see `imprints.marc_place_geonames`'s docstring). If a future corpus
+carries a `place_name_008` value from a country not yet downloaded, the
+crosswalk-building step below will print it as unresolved by name, so you
+know which additional country file to fetch.
+
+### Building the crosswalk and running the direct pass
+
+```bash
+# One-time (or after the place_name_008 value set changes): freezes
+# marc_place_008_geonames.csv at the repo root.
+python -m imprints.marc_place_geonames \
+    --data_csv data/PS/data.csv \
+    --admin1_codes data/geonames/admin1CodesASCII.txt \
+    --output_csv marc_place_008_geonames.csv
+
+# Direct GeoNames match -> data/PS/geonames_direct.csv
+python -m imprints.geonames_geocode direct \
+    --input_csv data/PS/data.csv \
+    --output_csv data/PS/geonames_direct.csv
+```
+
+### Fallback pipeline and reporting
+
+The existing Nominatim + LLM pipeline (`imprints.geocode_sample`,
+`imprints.llm_geocode`) only needs to run for what `geonames_direct.csv`
+didn't resolve — pass it to `llm_geocode`'s `--skip_geo_keys_csv` to skip
+already-resolved `geo_key`s:
+
+```bash
+python -m imprints.llm_geocode \
+    --skip_geo_keys_csv data/PS/geonames_direct.csv
+```
+
+`imprints.join_geocoded` then coalesces both pathways: a `geo_key` the
+direct pass resolved wins over the LLM+Nominatim result for it, with a
+`geocode_source` column recording which pathway produced each row.
+
+`imprints.geocode_compare` reports match-rate diagnostics: direct-pathway
+coverage, agreement with Nominatim when matching the *existing*
+LLM-normalized strings (`imprints.geonames_geocode llm` mode — no new API
+calls), and a disambiguation check confirming that ambiguous bare city names
+(e.g. "athens" as Georgia/Ohio/Illinois, "columbia" as Missouri/South
+Carolina) resolve to distinct, correct places.
+
+```bash
+python -m imprints.geonames_geocode llm \
+    --input_csv data/PS/llm_geocode.csv \
+    --output_csv data/PS/geonames_llm.csv
+python -m imprints.geocode_compare
+```
+
 ## Tests
 
 ```bash

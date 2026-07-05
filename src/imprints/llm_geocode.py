@@ -190,7 +190,24 @@ def _row_to_output(row, model, llm_normalized_place):
     }
 
 
-def run(input_csv, output_csv, model, sample_size, seed, limit, concurrency):
+def _load_geo_keys(csv_path):
+    """Return the set of geo_key values in a CSV, or an empty set if
+    csv_path is None."""
+    if csv_path is None:
+        return set()
+    return set(pd.read_csv(csv_path, usecols=["geo_key"])["geo_key"].astype(str))
+
+
+def run(
+    input_csv,
+    output_csv,
+    model,
+    sample_size,
+    seed,
+    limit,
+    concurrency,
+    skip_geo_keys_csv=None,
+):
     load_dotenv()
     client = OpenAI()
 
@@ -202,7 +219,12 @@ def run(input_csv, output_csv, model, sample_size, seed, limit, concurrency):
         print(f"Drew a random sample of {len(df)} places (seed={seed}).")
 
     done = already_processed(output_csv)
-    remaining = df[~df["geo_key"].astype(str).isin(done)]
+    skip = _load_geo_keys(skip_geo_keys_csv)
+    if skip:
+        print(
+            f"Skipping {len(skip)} geo_keys already resolved by the GeoNames direct pathway."
+        )
+    remaining = df[~df["geo_key"].astype(str).isin(done | skip)]
     print(f"{len(done)} already done, {len(remaining)} remaining.")
 
     if limit is not None:
@@ -312,6 +334,15 @@ def main():
         "Default 50 stays well under typical rate limits (e.g. 10,000 RPM); "
         "raise it if your account limits allow.",
     )
+    parser.add_argument(
+        "--skip_geo_keys_csv",
+        default=None,
+        help="Path to a CSV with a geo_key column (e.g. "
+        "imprints.geonames_geocode direct mode's output, filtered to "
+        "geonames_matched) whose geo_keys are skipped entirely -- already "
+        "resolved by the GeoNames direct pathway, so no LLM call is spent "
+        "on them. Default: none (process every remaining geo_key).",
+    )
     args = parser.parse_args()
 
     run(
@@ -322,6 +353,7 @@ def main():
         args.seed,
         args.limit,
         args.concurrency,
+        args.skip_geo_keys_csv,
     )
 
 

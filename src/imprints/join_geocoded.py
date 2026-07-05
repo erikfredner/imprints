@@ -14,20 +14,33 @@ city name (e.g. "Athens") but differ in 008 place code -- and therefore in
 true location.
 
 Coordinates come from the `llm_nominatim_*` columns: Nominatim results for
-the LLM-normalized place name, not the raw `places_clean` string.
+the LLM-normalized place name, not the raw `places_clean` string -- unless
+`--geonames-direct-csv` is given (default: `data/PS/geonames_direct.csv`, if
+present), in which case a geo_key resolved by `imprints.geonames_geocode`
+direct mode (`geonames_matched=True`) uses *those* coordinates/country code
+instead, since that pathway matches the record's own place_name_008-scoped
+gazetteer entry rather than an LLM guess. The column names stay
+`llm_nominatim_*` either way (so this stays a drop-in replacement for
+existing consumers, e.g. `figures/scripts/nyc_peak_map*.py`, with no
+changes needed there); a new `geocode_source` column
+(`geonames_direct`/`llm_nominatim`/`unmatched`) records which pathway
+actually produced each row's coordinates. Pass `--geonames-direct-csv ""` to
+disable this and reproduce the old LLM-only behavior exactly.
 
-All rows from data.csv are kept, including those with no Nominatim match or
-a non-US result; scope-specific filtering (e.g. to US-only records) is left
-to whichever figure or analysis consumes this output.
+All rows from data.csv are kept, including those with no match or a non-US
+result; scope-specific filtering (e.g. to US-only records) is left to
+whichever figure or analysis consumes this output.
 
 Usage:
     python -m imprints.join_geocoded \
         --input-csv data/PS/data.csv \
         --nominatim-csv data/PS/llm_geocode_nominatim.csv \
+        --geonames-direct-csv data/PS/geonames_direct.csv \
         --output-csv data/PS/geocoded.csv
 """
 
 import argparse
+import os
 
 import pandas as pd
 
@@ -83,11 +96,68 @@ def load_nominatim(nominatim_csv: str) -> pd.DataFrame:
     return df
 
 
-def join(data_df: pd.DataFrame, nominatim_df: pd.DataFrame) -> pd.DataFrame:
-    """Left-merge data_df onto nominatim_df on geo_key, keeping every
-    data_df row (including unmatched/non-US ones)."""
+def load_geonames_direct(geonames_direct_csv: str) -> pd.DataFrame:
+    """Load the per-geo_key-group direct GeoNames matching results
+    (imprints.geonames_geocode direct mode)."""
+    df = pd.read_csv(
+        geonames_direct_csv,
+        usecols=[
+            "geo_key",
+            "geonames_matched",
+            "geonames_lat",
+            "geonames_lon",
+            "geonames_country_code",
+        ],
+    )
+    if df["geo_key"].duplicated().any():
+        raise ValueError(
+            f"{geonames_direct_csv} has duplicate geo_key values; expected "
+            "one row per unique (places_clean, place_name_008) group."
+        )
+    return df
+
+
+def join(
+    data_df: pd.DataFrame,
+    nominatim_df: pd.DataFrame,
+    geonames_df: pd.DataFrame | None = None,
+) -> pd.DataFrame:
+    """Left-merge data_df onto nominatim_df (and, if given, geonames_df) on
+    geo_key, keeping every data_df row (including unmatched/non-US ones).
+
+    When geonames_df is given, a geo_key it resolved (geonames_matched=True)
+    has its llm_nominatim_lat/lon/country_code columns overwritten with the
+    GeoNames direct match instead -- see module docstring. geocode_source
+    records which pathway won for each row."""
     merged = data_df.merge(nominatim_df, on="geo_key", how="left")
-    return merged[OUTPUT_COLUMNS]
+
+    if geonames_df is None:
+        merged["geocode_source"] = (
+            merged["llm_nominatim_lat"]
+            .notna()
+            .map({True: "llm_nominatim", False: "unmatched"})
+        )
+        return merged[OUTPUT_COLUMNS + ["geocode_source"]]
+
+    merged = merged.merge(geonames_df, on="geo_key", how="left")
+    use_geonames = merged["geonames_matched"].fillna(False)
+
+    merged["geocode_source"] = "unmatched"
+    merged.loc[merged["llm_nominatim_lat"].notna(), "geocode_source"] = "llm_nominatim"
+    merged.loc[use_geonames, "geocode_source"] = "geonames_direct"
+
+    merged["llm_nominatim_lat"] = merged["geonames_lat"].where(
+        use_geonames, merged["llm_nominatim_lat"]
+    )
+    merged["llm_nominatim_lon"] = merged["geonames_lon"].where(
+        use_geonames, merged["llm_nominatim_lon"]
+    )
+    merged["llm_nominatim_country_code"] = (
+        merged["geonames_country_code"]
+        .str.lower()
+        .where(use_geonames, merged["llm_nominatim_country_code"])
+    )
+    return merged[OUTPUT_COLUMNS + ["geocode_source"]]
 
 
 def print_summary(merged: pd.DataFrame) -> None:
@@ -96,10 +166,13 @@ def print_summary(merged: pd.DataFrame) -> None:
     matched = merged["llm_nominatim_lat"].notna().sum()
     us = (merged["llm_nominatim_country_code"] == "us").sum()
     print(f"Joined rows: {total:,}")
-    print(f"Rows with a Nominatim match: {matched:,} ({matched / total:.1%})")
+    print(f"Rows with a match: {matched:,} ({matched / total:.1%})")
     print(
         f"Rows resolving to US (llm_nominatim_country_code == 'us'): {us:,} ({us / total:.1%})"
     )
+    print("By source:")
+    for source, count in merged["geocode_source"].value_counts().items():
+        print(f"  {source}: {count:,} ({count / total:.1%})")
 
 
 def main():
@@ -119,6 +192,14 @@ def main():
         "(default: data/PS/llm_geocode_nominatim.csv)",
     )
     parser.add_argument(
+        "--geonames-direct-csv",
+        default="data/PS/geonames_direct.csv",
+        help="Path to imprints.geonames_geocode direct mode's output. When "
+        "present, a geo_key it resolved wins over the LLM+Nominatim result "
+        "for that geo_key (see module docstring). Pass an empty string to "
+        "disable and use LLM+Nominatim results only.",
+    )
+    parser.add_argument(
         "--output-csv",
         default="data/PS/geocoded.csv",
         help="Output path for the joined CSV (default: data/PS/geocoded.csv)",
@@ -130,7 +211,16 @@ def main():
     print(f"Loading {args.nominatim_csv}")
     nominatim_df = load_nominatim(args.nominatim_csv)
 
-    merged = join(data_df, nominatim_df)
+    geonames_df = None
+    if args.geonames_direct_csv and os.path.exists(args.geonames_direct_csv):
+        print(f"Loading {args.geonames_direct_csv}")
+        geonames_df = load_geonames_direct(args.geonames_direct_csv)
+    elif args.geonames_direct_csv:
+        print(
+            f"{args.geonames_direct_csv} not found, skipping GeoNames direct results."
+        )
+
+    merged = join(data_df, nominatim_df, geonames_df)
     print_summary(merged)
 
     merged.to_csv(args.output_csv, index=False)
