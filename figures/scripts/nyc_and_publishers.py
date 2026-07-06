@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-Two-panel figure combining fig2 (NYC vs other PS imprint counts) on the left
-with fig3 (unique PS publisher counts per year) on the right.
+Two-panel figure combining ps_nyc_counts (NYC vs other PS imprint counts) on
+the left with ps_unique_publishers (unique PS publisher counts per year) on
+the right.
 """
 
 import argparse
@@ -10,8 +11,8 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
-import fig2
-import fig3
+import ps_nyc_counts
+import ps_unique_publishers
 import style
 
 DEFAULT_INPUT = Path(__file__).resolve().parents[2] / "data/PS/data.csv"
@@ -19,7 +20,7 @@ DEFAULT_OUTPUT = Path(__file__).resolve().parents[1] / "outputs/nyc_and_publishe
 
 
 def plot_left(ax, args, counts) -> None:
-    """Plot the fig2 panel (NYC vs other PS imprint counts) onto ax."""
+    """Plot the ps_nyc_counts panel (NYC vs other PS imprint counts) onto ax."""
     years = counts.index.to_numpy()
     city_counts = counts["city"].to_numpy()
     other_counts = counts["other"].to_numpy()
@@ -87,15 +88,16 @@ def plot_left(ax, args, counts) -> None:
 
 
 def compute_other_publisher_correlation(counts, publisher_counts) -> float:
-    """Pearson correlation between fig2's 'Other' series and fig3's unique publisher
-    counts, over the years the two series share."""
+    """Pearson correlation between ps_nyc_counts's 'Other' series and
+    ps_unique_publishers's unique publisher counts, over the years the two
+    series share."""
     other_series = counts["other"]
     common_years = other_series.index.intersection(publisher_counts.index)
     return other_series.loc[common_years].corr(publisher_counts.loc[common_years])
 
 
 def plot_right(ax, publisher_counts, correlation: float | None = None) -> None:
-    """Plot the fig3 panel (unique PS publishers per year) onto ax."""
+    """Plot the ps_unique_publishers panel (unique PS publishers per year) onto ax."""
     years = publisher_counts.index.to_numpy()
     values = publisher_counts.to_numpy()
 
@@ -106,7 +108,7 @@ def plot_right(ax, publisher_counts, correlation: float | None = None) -> None:
 
     if correlation is not None:
         ax.annotate(
-            f"r = {correlation:.2f} vs. Other (fig2)",
+            f"r = {correlation:.2f} vs. Other (ps_nyc_counts)",
             xy=(0.05, 0.95),
             xycoords="axes fraction",
             ha="left",
@@ -118,7 +120,8 @@ def plot_right(ax, publisher_counts, correlation: float | None = None) -> None:
 def main():
     parser = argparse.ArgumentParser(
         description="Plot a two-panel figure: NYC vs other PS imprint counts "
-        "(left, from fig2) and unique PS publisher counts (right, from fig3)"
+        "(left, from ps_nyc_counts) and unique PS publisher counts "
+        "(right, from ps_unique_publishers)"
     )
     parser.add_argument(
         "--input-csv",
@@ -151,16 +154,19 @@ def main():
         "--annotate-correlation",
         action="store_true",
         help="Annotate the right panel with the correlation between unique PS "
-        "publishers and fig2's 'Other' series",
+        "publishers and ps_nyc_counts's 'Other' series",
     )
     args = parser.parse_args()
 
-    df = fig2.load_data(args.input_csv)
-    counts = fig2.compute_counts(df, args.city, include_no_place=args.include_no_place)
-    publisher_counts = fig3.compute_unique_publishers(df)
+    df = ps_nyc_counts.load_data(args.input_csv)
+    counts = ps_nyc_counts.compute_counts(
+        df, args.city, include_no_place=args.include_no_place
+    )
+    publisher_counts = ps_unique_publishers.compute_unique_publishers(df)
     if publisher_counts.empty:
         raise ValueError(
-            f"No publisher records between {fig3.YEAR_START} and {fig3.YEAR_END}."
+            f"No publisher records between {ps_unique_publishers.YEAR_START} "
+            f"and {ps_unique_publishers.YEAR_END}."
         )
 
     style.apply_style()
@@ -170,6 +176,7 @@ def main():
     correlation = None
     if args.annotate_correlation:
         correlation = compute_other_publisher_correlation(counts, publisher_counts)
+        print(f"Correlation (Other vs. unique publishers): r = {correlation:.4f}")
 
     plot_left(ax_left, args, counts)
     plot_right(ax_right, publisher_counts, correlation=correlation)

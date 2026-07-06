@@ -14,7 +14,7 @@ import pandas as pd
 import style
 
 DEFAULT_INPUT = Path(__file__).resolve().parents[2] / "data/PS/data.csv"
-DEFAULT_OUTPUT = Path(__file__).resolve().parents[1] / "outputs/fig2.png"
+DEFAULT_OUTPUT = Path(__file__).resolve().parents[1] / "outputs/ps_nyc_counts.png"
 YEAR_START = 1900
 YEAR_END = 2010
 
@@ -91,7 +91,7 @@ def main():
         "--output-line",
         type=Path,
         default=DEFAULT_OUTPUT,
-        help="Output path for line chart (default: figures/outputs/fig2.png)",
+        help="Output path for line chart (default: figures/outputs/ps_nyc_counts.png)",
     )
     parser.add_argument(
         "--ci",
@@ -120,20 +120,20 @@ def main():
     if args.ci:
         z = 1.96
         se_city = np.sqrt(city_counts)
-        lower_city = (city_counts - z * se_city).clip(lower=0)
+        lower_city = (city_counts - z * se_city).clip(min=0)
         upper_city = city_counts + z * se_city
         plt.fill_between(
             years, lower_city, upper_city, color=style.COLOR_NYC, alpha=0.15
         )
         se_other = np.sqrt(other_counts)
-        lower_other = (other_counts - z * se_other).clip(lower=0)
+        lower_other = (other_counts - z * se_other).clip(min=0)
         upper_other = other_counts + z * se_other
         plt.fill_between(
             years, lower_other, upper_other, color=style.COLOR_OTHER, alpha=0.15
         )
         if no_place_counts is not None:
             se_no_place = np.sqrt(no_place_counts)
-            lower_no_place = (no_place_counts - z * se_no_place).clip(lower=0)
+            lower_no_place = (no_place_counts - z * se_no_place).clip(min=0)
             upper_no_place = no_place_counts + z * se_no_place
             plt.fill_between(
                 years,

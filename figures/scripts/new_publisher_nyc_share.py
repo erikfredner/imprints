@@ -3,11 +3,11 @@
 Generate a line chart of New York City's share of publisher-place-of-publication
 pairings appearing in the PS dataset for the first time each year.
 
-Tests the assumption behind fig3's rising unique-publisher count: that growth is
-happening mostly outside NYC. Unlike ps_nyc_share (NYC's share of all PS records
-each year), this tracks where *newly appearing* publisher-place pairings are
-located, since a publisher name alone isn't a stable unit (the same name could
-relocate).
+Tests the assumption behind ps_unique_publishers's rising unique-publisher
+count: that growth is happening mostly outside NYC. Unlike ps_nyc_share (NYC's
+share of all PS records each year), this tracks where *newly appearing*
+publisher-place pairings are located, since a publisher name alone isn't a
+stable unit (the same name could relocate).
 """
 
 import argparse

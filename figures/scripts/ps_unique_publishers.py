@@ -1,4 +1,9 @@
 #!/usr/bin/env python3
+"""
+Generate an annual line chart of the count of unique cleaned publisher names
+appearing among PS-class imprints (1900-2010).
+"""
+
 import argparse
 from pathlib import Path
 
@@ -8,7 +13,7 @@ import pandas as pd
 import style
 
 DEFAULT_INPUT = Path(__file__).resolve().parents[2] / "data/PS/data.csv"
-DEFAULT_OUTPUT = Path(__file__).resolve().parents[1] / "outputs/fig3.png"
+DEFAULT_OUTPUT = Path(__file__).resolve().parents[1] / "outputs/ps_unique_publishers.png"
 YEAR_START = 1900
 YEAR_END = 2010
 
@@ -43,7 +48,7 @@ def main() -> None:
         "--output",
         type=Path,
         default=DEFAULT_OUTPUT,
-        help="Output file path for the figure (default: figures/outputs/fig3.png)",
+        help="Output file path for the figure (default: figures/outputs/ps_unique_publishers.png)",
     )
     args = parser.parse_args()
 
