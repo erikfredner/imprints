@@ -14,7 +14,6 @@ dependencies = [
     "openai>=2.44.0",
     "pandas>=2.2.3",
     "python-dotenv>=1.2.2",
-    "requests>=2.34.2",
     "scipy>=1.15.2",
     "statsmodels>=0.14.4",
 ]

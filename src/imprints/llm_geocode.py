@@ -1,22 +1,24 @@
 """
-Normalize places of publication via an LLM, as a second pass alongside
-`imprints.geocode_sample`'s Nominatim lookups.
+Normalize places of publication via an LLM, as the second stage of the
+fallback for whatever `imprints.geonames_geocode` (`direct` mode) couldn't
+resolve against the local GeoNames gazetteer.
 
-Nominatim is a string-matching gazetteer: it has no world knowledge, so it
-can't disambiguate "Santa Fe" (almost certainly Santa Fe, New Mexico, given
-these are US literary-publishing records) from Santa Fe, Argentina, and it
-has no way to flag "this looks like a cataloging error, not a real place."
-This script asks an LLM to make that judgment call instead, using the
-PS/American-literature context plus both the cleaned and original place
+A plain gazetteer match is exact-string lookup: it has no world knowledge, so
+it can't disambiguate "Santa Fe" (almost certainly Santa Fe, New Mexico,
+given these are US literary-publishing records) from Santa Fe, Argentina,
+and it has no way to flag "this looks like a cataloging error, not a real
+place." This script asks an LLM to make that judgment call instead, using
+the PS/American-literature context plus both the cleaned and original place
 strings as evidence, and to return a `null` guess rather than a fabricated
 one when the evidence doesn't clearly support a real place of publication.
+Its output is then matched against the same gazetteer by
+`imprints.geonames_geocode`'s `llm` mode.
 
-Takes the same per-group rows `geocode_sample.py` produces (grouped by
-`geo_key` -- `places_clean` plus the decoded MARC 008 place-of-publication
-code, `place_name_008`, via `imprints.place_keys` -- with a representative
-`places_original_example` and `n_records` count) and carries the
-`nominatim_*` columns through to the output so LLM and Nominatim guesses can
-be reviewed side by side.
+Loads `data/PS/data.csv` (or any data.csv-shaped CSV) and groups it into one
+row per `geo_key` -- `places_clean` plus the decoded MARC 008
+place-of-publication code, `place_name_008`, via `imprints.place_keys` --
+with a representative `places_original_example` and `n_records` count, via
+`imprints.place_keys.build_places`.
 
 When `place_name_008` (and, rarely, `place_752`) is available for a group,
 it's passed to the model as an explicit hint: a structured MARC cataloging
@@ -25,21 +27,21 @@ correctly split ambiguous bare city names (e.g. "Athens" as Georgia, Ohio,
 or Illinois) that the model's generic "prefer a US reading" heuristic alone
 gets wrong more often than not.
 
-Resumable like `geocode_sample.py`: results are appended to --output_csv one
-row at a time as they're produced, and on startup any places_clean values
-already present in an existing --output_csv are skipped. If --sample_size is
-given, a deterministic subset is drawn first (via --seed) and then filtered
-by already-processed rows, so re-running after an interruption resumes
-within the same sample rather than drawing a new one.
+Resumable: results are appended to --output_csv one row at a time as
+they're produced, and on startup any places_clean values already present in
+an existing --output_csv are skipped. If --sample_size is given, a
+deterministic subset is drawn first (via --seed) and then filtered by
+already-processed rows, so re-running after an interruption resumes within
+the same sample rather than drawing a new one.
 
-Unlike geocode_sample.py, OpenAI's rate limits are generous enough (this was
+OpenAI's rate limits are generous enough (this was
 built against 10,000 RPM / 10M TPM for gpt-5.4-mini-2026-03-17) that requests
 are fired concurrently via a thread pool (--concurrency, default 50) rather
 than one at a time. A row that fails after its retries is skipped (not
 written) rather than stopping the whole run, so it's naturally picked up on
 the next resume; only a KeyboardInterrupt stops the run early.
 
-Usage (full dataset, default --input_csv is the full nominatim output):
+Usage (full dataset, default --input_csv is data/PS/data.csv):
     python -m imprints.llm_geocode
 
 Usage (100-row test sample):
@@ -102,10 +104,6 @@ OUTPUT_FIELDS = [
     "place_752",
     "places_original_example",
     "n_records",
-    "nominatim_found",
-    "nominatim_city",
-    "nominatim_state",
-    "nominatim_country",
     "llm_normalized_place",
     "llm_model",
 ]
@@ -181,10 +179,6 @@ def _row_to_output(row, model, llm_normalized_place):
         "place_752": row.get("place_752"),
         "places_original_example": row["places_original_example"],
         "n_records": row["n_records"],
-        "nominatim_found": row.get("nominatim_found"),
-        "nominatim_city": row.get("nominatim_city"),
-        "nominatim_state": row.get("nominatim_state"),
-        "nominatim_country": row.get("nominatim_country"),
         "llm_normalized_place": llm_normalized_place,
         "llm_model": model,
     }
@@ -212,7 +206,12 @@ def run(
     client = OpenAI()
 
     print(f"Loading {input_csv}")
-    df = pd.read_csv(input_csv)
+    wanted = ["places", "places_clean", "place_name_008", "place_752"]
+    header = pd.read_csv(input_csv, nrows=0)
+    usecols = [c for c in wanted if c in header.columns]
+    raw_df = pd.read_csv(input_csv, usecols=usecols)
+    df = place_keys.build_places(raw_df)
+    print(f"{len(df)} unique (places_clean, place_name_008) groups.")
 
     if sample_size is not None:
         df = df.sample(n=sample_size, random_state=seed).sort_values("geo_key")
@@ -303,7 +302,7 @@ def main():
         description="Normalize places of publication via an LLM. Resumable: "
         "rerun the same command to continue after an interruption or error."
     )
-    parser.add_argument("--input_csv", default="data/PS/nominatim_full.csv")
+    parser.add_argument("--input_csv", default="data/PS/data.csv")
     parser.add_argument("--output_csv", default="data/PS/llm_geocode.csv")
     parser.add_argument("--model", default="gpt-5.4-mini-2026-03-17")
     parser.add_argument(

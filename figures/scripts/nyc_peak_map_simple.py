@@ -141,8 +141,8 @@ def plot_viridis_map(
         counts = counts.sort_values("count")
         sizes = npm.marker_size(counts["count"].to_numpy(), all_counts)
         mappable = ax.scatter(
-            counts["llm_nominatim_lon"],
-            counts["llm_nominatim_lat"],
+            counts["geocoded_lon"],
+            counts["geocoded_lat"],
             s=sizes,
             c=counts["count"],
             cmap="viridis",
@@ -173,7 +173,7 @@ def main() -> None:
         "--input-csv",
         type=Path,
         default=DEFAULT_INPUT,
-        help="Path to joined PS/Nominatim data CSV (default: data/PS/geocoded.csv)",
+        help="Path to joined PS/geocoded data CSV (default: data/PS/geocoded.csv)",
     )
     parser.add_argument(
         "--output",

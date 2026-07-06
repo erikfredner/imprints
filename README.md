@@ -74,14 +74,15 @@ cataloging date.
 
 ## Geocoding
 
-Places of publication are geocoded in two passes. The primary pass matches
-`places_clean` directly against a local GeoNames gazetteer, scoped by
-`place_name_008` (e.g. a bare "athens" is looked up only among Georgia
-places when `place_name_008` is "Georgia") — free, deterministic, and, since
-`place_name_008` is present on ~94% of PS-range records, enough to resolve
-~90% of records without any API call. Only what that pass can't resolve
-(no `place_name_008`, or no gazetteer match in scope) falls through to the
-existing Nominatim + LLM-normalization pipeline.
+Places of publication are geocoded in two passes, both against a local
+GeoNames gazetteer — no external API calls. The primary pass matches
+`places_clean` directly, scoped by `place_name_008` (e.g. a bare "athens" is
+looked up only among Georgia places when `place_name_008` is "Georgia") —
+free, deterministic, and, since `place_name_008` is present on ~94% of
+PS-range records, enough to resolve ~90% of records outright. Only what that
+pass can't resolve (no `place_name_008`, or no gazetteer match in scope)
+falls through to an LLM-normalization pass, whose output is then matched
+against the same gazetteer.
 
 ### GeoNames reference data
 
@@ -123,31 +124,34 @@ python -m imprints.geonames_geocode direct \
 
 ### Fallback pipeline and reporting
 
-The existing Nominatim + LLM pipeline (`imprints.geocode_sample`,
-`imprints.llm_geocode`) only needs to run for what `geonames_direct.csv`
-didn't resolve — pass it to `llm_geocode`'s `--skip_geo_keys_csv` to skip
-already-resolved `geo_key`s:
+`imprints.llm_geocode` only needs to run for what `geonames_direct.csv`
+didn't resolve — pass it to `--skip_geo_keys_csv` to skip already-resolved
+`geo_key`s — and its LLM-normalized output is then matched against the same
+GeoNames gazetteer via `imprints.geonames_geocode`'s `llm` mode:
 
 ```bash
 python -m imprints.llm_geocode \
     --skip_geo_keys_csv data/PS/geonames_direct.csv
-```
 
-`imprints.join_geocoded` then coalesces both pathways: a `geo_key` the
-direct pass resolved wins over the LLM+Nominatim result for it, with a
-`geocode_source` column recording which pathway produced each row.
-
-`imprints.geocode_compare` reports match-rate diagnostics: direct-pathway
-coverage, agreement with Nominatim when matching the *existing*
-LLM-normalized strings (`imprints.geonames_geocode llm` mode — no new API
-calls), and a disambiguation check confirming that ambiguous bare city names
-(e.g. "athens" as Georgia/Ohio/Illinois, "columbia" as Missouri/South
-Carolina) resolve to distinct, correct places.
-
-```bash
 python -m imprints.geonames_geocode llm \
     --input_csv data/PS/llm_geocode.csv \
     --output_csv data/PS/geonames_llm.csv
+```
+
+`imprints.join_geocoded` then coalesces both pathways: a `geo_key` the
+direct pass resolved wins over the residual pass's result for it, with a
+`geocode_source` column recording which pathway produced each row.
+
+```bash
+python -m imprints.join_geocoded
+```
+
+`imprints.geocode_compare` reports match-rate diagnostics: direct-pathway
+coverage, and a disambiguation check confirming that ambiguous bare city
+names (e.g. "athens" as Georgia/Ohio/Illinois, "columbia" as Missouri/South
+Carolina) resolve to distinct, correct places.
+
+```bash
 python -m imprints.geocode_compare
 ```
 

@@ -55,7 +55,7 @@ LEGEND_COUNTS = npm.LEGEND_COUNTS
 def coordinate_counts(df: pd.DataFrame) -> pd.DataFrame:
     """Count records at each unique (lat, lon) coordinate."""
     return (
-        df.groupby(["llm_nominatim_lat", "llm_nominatim_lon"])
+        df.groupby(["geocoded_lat", "geocoded_lon"])
         .size()
         .rename("count")
         .reset_index()
@@ -78,7 +78,7 @@ def compute_share_diff(before: pd.DataFrame, after: pd.DataFrame) -> pd.DataFram
     after_counts = coordinate_counts(after).rename(columns={"count": "count_after"})
     merged = before_counts.merge(
         after_counts,
-        on=["llm_nominatim_lat", "llm_nominatim_lon"],
+        on=["geocoded_lat", "geocoded_lon"],
         how="outer",
     ).fillna({"count_before": 0, "count_after": 0})
 
@@ -102,8 +102,8 @@ def plot_map(coords: pd.DataFrame, peak_year: int, output_path: Path) -> None:
     counts = coords["total_count"].to_numpy()
     sizes = npm.marker_size(counts, counts)
     mappable = ax.scatter(
-        coords["llm_nominatim_lon"],
-        coords["llm_nominatim_lat"],
+        coords["geocoded_lon"],
+        coords["geocoded_lat"],
         s=sizes,
         c=coords["metric"],
         cmap=DIVERGING_CMAP,
@@ -144,7 +144,7 @@ def main() -> None:
         "--input-csv",
         type=Path,
         default=DEFAULT_INPUT,
-        help="Path to joined PS/Nominatim data CSV (default: data/PS/geocoded.csv)",
+        help="Path to joined PS/geocoded data CSV (default: data/PS/geocoded.csv)",
     )
     parser.add_argument(
         "--output",

@@ -31,7 +31,7 @@ YEAR_START = 1900
 YEAR_END = 2010
 
 #: Continental US bounding box. Excludes Alaska, Hawaii, Puerto Rico, and
-#: other territories, which llm_nominatim_country_code == "us" alone does not.
+#: other territories, which geocoded_country_code == "us" alone does not.
 CONUS_LON_MIN, CONUS_LON_MAX = -125, -66
 CONUS_LAT_MIN, CONUS_LAT_MAX = 24, 50
 
@@ -52,20 +52,20 @@ LEGEND_COUNTS = [1, 10, 100, 1000]
 
 
 def load_data(csv_path: Path) -> pd.DataFrame:
-    """Load the joined PS/Nominatim data (see imprints.join_geocoded)."""
+    """Load the joined PS/geocoded data (see imprints.join_geocoded)."""
     return pd.read_csv(csv_path)
 
 
 def filter_us_conus(df: pd.DataFrame) -> pd.DataFrame:
     """Restrict to US-resolved records within the continental bounding box."""
     us = df[
-        (df["llm_nominatim_country_code"] == "us")
-        & df["llm_nominatim_lat"].notna()
-        & df["llm_nominatim_lon"].notna()
+        (df["geocoded_country_code"] == "us")
+        & df["geocoded_lat"].notna()
+        & df["geocoded_lon"].notna()
     ]
     return us[
-        us["llm_nominatim_lon"].between(CONUS_LON_MIN, CONUS_LON_MAX)
-        & us["llm_nominatim_lat"].between(CONUS_LAT_MIN, CONUS_LAT_MAX)
+        us["geocoded_lon"].between(CONUS_LON_MIN, CONUS_LON_MAX)
+        & us["geocoded_lat"].between(CONUS_LAT_MIN, CONUS_LAT_MAX)
     ]
 
 
@@ -85,7 +85,7 @@ def coordinate_counts(df: pd.DataFrame) -> pd.DataFrame:
     """Count records at each unique (lat, lon) in df, flagging coordinates
     where any record's city_group is "New York City"."""
     return (
-        df.groupby(["llm_nominatim_lat", "llm_nominatim_lon"])
+        df.groupby(["geocoded_lat", "geocoded_lon"])
         .agg(
             count=("city_group", "size"),
             is_nyc=("city_group", lambda s: (s == "New York City").any()),
@@ -107,8 +107,8 @@ def split_by_prior_presence(
     """Split after_counts into coordinates that also appear in before_counts
     (returning locations) and those that don't (new locations)."""
     merged = after_counts.merge(
-        before_counts[["llm_nominatim_lat", "llm_nominatim_lon"]],
-        on=["llm_nominatim_lat", "llm_nominatim_lon"],
+        before_counts[["geocoded_lat", "geocoded_lon"]],
+        on=["geocoded_lat", "geocoded_lon"],
         how="left",
         indicator=True,
     )
@@ -156,8 +156,8 @@ def scatter_coords(
     coordinates."""
     sizes = marker_size(coord_counts["count"].to_numpy(), all_counts)
     ax.scatter(
-        coord_counts["llm_nominatim_lon"],
-        coord_counts["llm_nominatim_lat"],
+        coord_counts["geocoded_lon"],
+        coord_counts["geocoded_lat"],
         s=sizes,
         c=color,
         marker=marker,
@@ -309,7 +309,7 @@ def main() -> None:
         "--input-csv",
         type=Path,
         default=DEFAULT_INPUT,
-        help="Path to joined PS/Nominatim data CSV (default: data/PS/geocoded.csv)",
+        help="Path to joined PS/geocoded data CSV (default: data/PS/geocoded.csv)",
     )
     parser.add_argument(
         "--output",

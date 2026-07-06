@@ -1,35 +1,29 @@
 """
 Geocode places of publication directly against a local GeoNames gazetteer,
-using the MARC 008 place-of-publication signal to scope the lookup -- the
-primary, free, deterministic alternative to the Nominatim+LLM pipeline
-(`imprints.geocode_sample`/`imprints.llm_geocode`) for the ~94% of records
-that carry a `place_name_008` value.
+using the MARC 008 place-of-publication signal to scope the lookup -- a
+free, deterministic, entirely local geocoder for the ~94% of records that
+carry a `place_name_008` value.
 
 Two modes, selected by the `mode` positional argument:
 
 - `direct` (default): groups `data/PS/data.csv` by `geo_key`
   (`imprints.place_keys.build_geo_key`, reusing
-  `imprints.geocode_sample.build_places` for the grouping itself), resolves
+  `imprints.place_keys.build_places` for the grouping itself), resolves
   each group's `place_name_008` to a GeoNames scope via
   `imprints.marc_place_geonames.resolve_geo_scope`, and matches
-  `places_clean` against the gazetteer within that scope. This is the new
+  `places_clean` against the gazetteer within that scope. This is the
   primary geocoding pass: whatever it resolves (`geonames_matched=True`)
-  never needs to go through the paid LLM normalization pass at all.
+  never needs to go through the LLM normalization pass at all.
 - `llm`: matches `imprints.llm_geocode`'s already-produced
   `llm_normalized_place` strings (`"city, state"` / `"city, country"` /
   `"city, state, country"`, see that module's prompt) against the same
   gazetteer, resolving the trailing state/country segment(s) to a scope via
-  `imprints.marc_place_geonames.resolve_scope_by_name`. Used two ways: (1)
-  as a validation pass needing no new OpenAI or Nominatim calls, comparable
-  row-for-row against the existing `data/PS/llm_geocode_nominatim.csv` via
-  `imprints.geocode_compare`; (2) as the second half of the fallback for
-  whatever `direct` mode couldn't resolve -- run `imprints.llm_geocode`
-  against just that residual to clean up typos/noise the gazetteer lookup
-  can't, then geocode the results here. `geo_key` is passed through from
-  the input when present (case (2)) so the result can be merged back onto
-  `data.csv`/`direct` mode's output; it's blank for older inputs that
-  predate `geo_key` (case (1)), which is fine since that comparison joins
-  on `places_clean` instead.
+  `imprints.marc_place_geonames.resolve_scope_by_name`. This is the second
+  half of the fallback for whatever `direct` mode couldn't resolve -- run
+  `imprints.llm_geocode` against just that residual to clean up typos/noise
+  the gazetteer lookup can't, then geocode the results here. `geo_key` is
+  passed through from the input so the result can be merged back onto
+  `data.csv`/`direct` mode's output via `imprints.join_geocoded`.
 
 Matching (`match_place`) is scope-restricted exact-name lookup against
 GeoNames populated-place (feature class `P`) rows, normalized with
@@ -40,8 +34,7 @@ pass, to strip a redundant trailing state token (e.g. "boston mass" ->
 "boston") before retrying. Multiple equally-named candidates within a scope
 are resolved by highest population, flagged `geonames_ambiguous=True` with
 the candidate count for QA visibility, rather than left unmatched -- a
-places_clean/LLM string with no candidate at all falls through unmatched, to
-be picked up by the existing LLM+Nominatim pipeline.
+places_clean/LLM string with no candidate at all is left unmatched.
 
 Requires GeoNames per-country dumps (see `imprints.marc_place_geonames`'
 docstring for the download commands) for whichever countries
@@ -64,7 +57,7 @@ from collections import defaultdict
 
 import pandas as pd
 
-from imprints import geocode_sample, marc_place_geonames
+from imprints import marc_place_geonames, place_keys
 from imprints.data_cleaning import clean_string
 from imprints.place_canonicalization import canonicalize_place
 
@@ -265,7 +258,7 @@ def run_direct(input_csv, crosswalk_path, index, output_csv):
     header = pd.read_csv(input_csv, nrows=0)
     usecols = [c for c in wanted if c in header.columns]
     df = pd.read_csv(input_csv, usecols=usecols)
-    groups = geocode_sample.build_places(df)
+    groups = place_keys.build_places(df)
     print(f"{len(groups)} unique (places_clean, place_name_008) groups.")
 
     n_matched = 0
@@ -371,8 +364,8 @@ def main():
         default="direct",
         help="'direct' (default) matches data.csv's places_clean/"
         "place_name_008 groups. 'llm' matches imprints.llm_geocode's "
-        "llm_normalized_place strings instead, for validation against "
-        "existing Nominatim results.",
+        "llm_normalized_place strings instead -- the second stage of the "
+        "fallback for whatever 'direct' couldn't resolve.",
     )
     parser.add_argument(
         "--input_csv",
