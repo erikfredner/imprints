@@ -19,10 +19,17 @@ Two modes, selected by the `mode` positional argument:
   `llm_normalized_place` strings (`"city, state"` / `"city, country"` /
   `"city, state, country"`, see that module's prompt) against the same
   gazetteer, resolving the trailing state/country segment(s) to a scope via
-  `imprints.marc_place_geonames.resolve_scope_by_name`. This needs no new
-  OpenAI or Nominatim calls -- it's a validation pass, comparable row-for-row
-  against the existing `data/PS/llm_geocode_nominatim.csv` via
-  `imprints.geocode_compare`.
+  `imprints.marc_place_geonames.resolve_scope_by_name`. Used two ways: (1)
+  as a validation pass needing no new OpenAI or Nominatim calls, comparable
+  row-for-row against the existing `data/PS/llm_geocode_nominatim.csv` via
+  `imprints.geocode_compare`; (2) as the second half of the fallback for
+  whatever `direct` mode couldn't resolve -- run `imprints.llm_geocode`
+  against just that residual to clean up typos/noise the gazetteer lookup
+  can't, then geocode the results here. `geo_key` is passed through from
+  the input when present (case (2)) so the result can be merged back onto
+  `data.csv`/`direct` mode's output; it's blank for older inputs that
+  predate `geo_key` (case (1)), which is fine since that comparison joins
+  on `places_clean` instead.
 
 Matching (`match_place`) is scope-restricted exact-name lookup against
 GeoNames populated-place (feature class `P`) rows, normalized with
@@ -100,6 +107,7 @@ DIRECT_OUTPUT_FIELDS = [
     "n_records",
 ]
 LLM_OUTPUT_FIELDS = [
+    "geo_key",
     "places_clean",
     "llm_normalized_place",
     "geonames_matched",
@@ -336,6 +344,7 @@ def run_llm(input_csv, admin1_codes_path, countries, index, output_csv):
                 n_matched += 1
             writer.writerow(
                 {
+                    "geo_key": row.get("geo_key"),
                     "places_clean": row["places_clean"],
                     "llm_normalized_place": llm_place,
                     "n_records": row["n_records"],

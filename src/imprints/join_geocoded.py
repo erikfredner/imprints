@@ -76,18 +76,37 @@ def load_data(input_csv: str) -> pd.DataFrame:
     return df
 
 
+NOMINATIM_COLUMNS = [
+    "geo_key",
+    "llm_nominatim_found",
+    "llm_nominatim_country_code",
+    "llm_nominatim_lat",
+    "llm_nominatim_lon",
+]
+
+
 def load_nominatim(nominatim_csv: str) -> pd.DataFrame:
-    """Load the per-geo_key-group LLM-normalized geocoding results."""
-    df = pd.read_csv(
-        nominatim_csv,
-        usecols=[
-            "geo_key",
-            "llm_nominatim_found",
-            "llm_nominatim_country_code",
-            "llm_nominatim_lat",
-            "llm_nominatim_lon",
-        ],
-    )
+    """Load the per-geo_key-group LLM-normalized geocoding results.
+
+    Returns an empty (but correctly shaped) DataFrame, with a printed
+    warning, if nominatim_csv predates the geo_key key (see
+    imprints.place_keys) -- e.g. an old data/PS/llm_geocode_nominatim.csv
+    generated before the 008-disambiguation migration -- rather than
+    crashing. Records that would have relied on it simply have no
+    LLM+Nominatim fallback available and are left unmatched by that source;
+    imprints.geonames_geocode's direct pathway does not depend on this
+    file at all."""
+    header = pd.read_csv(nominatim_csv, nrows=0)
+    if "geo_key" not in header.columns:
+        print(
+            f"WARNING: {nominatim_csv} has no geo_key column (predates the "
+            "geo_key migration) -- proceeding with no LLM+Nominatim "
+            "fallback data. See imprints.geocode_sample's module docstring "
+            "for the migration recipe."
+        )
+        return pd.DataFrame(columns=NOMINATIM_COLUMNS)
+
+    df = pd.read_csv(nominatim_csv, usecols=NOMINATIM_COLUMNS)
     if df["geo_key"].duplicated().any():
         raise ValueError(
             f"{nominatim_csv} has duplicate geo_key values; expected one "
