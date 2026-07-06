@@ -282,6 +282,14 @@ def normalize_places(value):
 # address, but MARC square brackets merely mark cataloger-supplied text and do
 # not suppress place separators.
 _PLACE_SPLIT_RE = re.compile(r"\s*;\s*|\s*&\s*|\s+and\s+", re.IGNORECASE)
+# Records with multiple 260/264 $a occurrences sometimes already arrive as
+# separate list items where the continuation entry starts with "and"/"&",
+# e.g. ["Boston", "and New York,"] -- a cataloging-side list continuation,
+# not a string split_places's own delimiter matching produces (there's no
+# leading whitespace left for _PLACE_SPLIT_RE to match once this item is
+# handled on its own). Strip it so "and New York" resolves as "New York"
+# instead of failing every nyc_variants.txt lookup.
+_LEADING_CONNECTOR_RE = re.compile(r"^(?:and|&)\s+", re.IGNORECASE)
 _COMPOUND_GEOGRAPHIC_NAME_RE = re.compile(
     r"\b(?:"
     r"antigua\s+(?:and|&)\s+barbuda|"
@@ -315,6 +323,9 @@ def split_places(value):
     except Exception:
         pass
     original_text = str(value).strip()
+    original_text = _LEADING_CONNECTOR_RE.sub("", original_text).strip()
+    if not original_text:
+        return [None]
     text = original_text
     if text.startswith("[") and text.endswith("]"):
         text = text[1:-1].strip()

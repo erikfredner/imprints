@@ -1,3 +1,7 @@
+bayside n y
+bayside new york
+bayside ny
+bowling green new york n y
 bronx
 bronx n y
 bronx n y bainbridge ave bronx
@@ -6,6 +10,8 @@ bronx new york
 bronx ny
 bronx ny p o box bronx
 bronz n y
+brookly ny
+brooklyln
 brooklyn
 brooklyn heights n y
 brooklyn l i
@@ -16,43 +22,33 @@ brooklyn new york usa
 brooklyn ny
 brooklyn ny ditmas ave brooklyn
 brooklyn ny east st brooklyn
-brookly ny
-brooklyln
 brookyn n y
-manhattan
-manhattan n y
-manhattan new york
-queens new york city
-queens ny
-staten island
-staten island n y
-staten island new york
-staten island ny
-great kills staten island n y
-st george staten island new york
-harlem
-harlem n y
-harlem new york
+cambria heights ny
+cathedral station nyc
 chelsea n y
 chelsea new york
+chicago new york
+college point n y
+cooper station n ew y ork n y
+cooper station n y c
+emory university new york
+emory university new york etc
+flushing n y
+flushing ny
+forest hil l s ny box queens blvd forest hills
+forest hills n y
+forest hills ny
+forest hills ny th road forest hills
+great kills staten island n y
 greenwich village n y
 greenwich village new york
 greenwich village new york city
-tribeca
-tribeca new york
-tribeca new york ny
-tribeca ny
-trbeca
-trbeca ny
-tribecca
-tudor city n y
-cathedral station nyc
-cooper station n ew y ork n y
-cooper station n y c
-long island city n y
-l ong i sland city ny
-long island city ny
-long island city ny usa
+harlem
+harlem n y
+harlem new york
+howard beach ny
+i e new york
+indianapolis new york
 jackson heights n y
 jackson heights ny
 jamaica n y
@@ -61,93 +57,117 @@ jamaica queens n y
 jamaica queens ny
 jamaica queensborough n y
 jamaica queensborough new york
-flushing n y
-flushing ny
-forest hil l s ny box queens blvd forest hills
-forest hills n y
-forest hills ny
-forest hills ny th road forest hills
-bayside n y
-bayside new york
-bayside ny
-cambria heights ny
-college point n y
 kew gardens ny
-ozone park n y
-ozone park new york
-ozone park ny ave ozone park
-rego park n y
-maspeth n y
-ridgewood n y
-woodhaven n y
-woodhaven new york city
-howard beach ny
+l ong i sland city ny
 laurelton
 laurelton n y
-springfield gardens ny
-sunnyside n y
-whitestone n y
-new yo r k
-new yok
-new yor k
-new york
-new york city
-new york city etc
-new york city n y
-new york city new york
-new york city ny
-new york city u s a
-new york n y
-new york new york
-new york new york usa
-new york ny
-new york ny u s a
-new york ny usa
-newyork
-nyc
-nyc i e new york
-nyc i e new york city
-nyc ny
-nyc usa
-n y c
+long island city n y
+long island city ny
+long island city ny usa
+manhattan
+manhattan n y
+manhattan new york
+maspeth n y
+mill valley calif new york n y
 n ew y ork
 n ew y ork c ity
 n ew y ork c ity n y
 n ew y ork city
 n ew y ork n y
 n ew y ork ny
-ny i e new york
+n i u i ork
+n y
+n y c
+n y c i e new york
+n y c i e new york city th ave suite n y c
 n y i e new york
 n y i e new york n y
 n y i e new york n y p o box n y
 n y n y
 n y n y u s a
-ny ny
-nuyork
-nyu york
-niu yu rk
-n i u i ork
-new yort
-bowling green new york n y
-n y c i e new york city th ave suite n y c
+new yo r k
+new yok
+new yor
+new yor k
+new york
+new york a s barnes
+new york ace books
+new york amistad
+new york and
+new york and other
 new york apt l
+new york atria books
+new york avalon books
 new york ave a suite new york
 new york avenue a apt new york ny
+new york bold strokes books
+new york book supply co
+new york bookman associates
+new york boston
+new york boston etc
+new york box cooper station new york
 new york box old chelsea station new york
 new york box peck slip station new york
 new york box times square station new york
+new york bpress of j j little
+new york brava
+new york broadway
 new york broadway new york
 new york cathedral parkway new york
+new york chicago etc
+new york cincinnati
+new york cincinnati etc
+new york city
+new york city etc
+new york city los angeles
+new york city n y
+new york city new york
+new york city ny
+new york city u s a
+new york crown publishers
+new york distributed by penguin group
+new york distributed by simon
+new york distributed to the book trade by st martin s press
+new york dodd
+new york e p dutton
 new york e rd st suite new york
+new york e th new york
 new york e th st new york
 new york east end ave suite b new york
+new york east seventeenth street
+new york east th street
+new york edward schuberth
 new york etc
+new york exposition press
+new york f fell
 new york fifth ave new york
+new york fourth avenue and twenty third street
+new york g p putnam s sons
+new york gramercy
+new york h vinal
+new york holt
+new york houghton mifflin
+new york indianapolis
+new york j c derby
+new york j wiley
 new york lexington ave new york
+new york london
+new york london etc
+new york los angeles
+new york los angeles etc
+new york margent press
+new york n y
+new york n y apt c e st new york
 new york n y box old chelsea station new york
 new york n y broadway new york
+new york n y e rd st new york
+new york n y e th st new york
+new york n y eighth ave new york n y
+new york n y etc
 new york n y jaf box new york
 new york n y lexington ave new york
+new york n y los angeles calif
+new york n y los angles calif
 new york n y p o box bowling green station new york
 new york n y p o box bronx ny
 new york n y park ave new york
@@ -158,6 +178,7 @@ new york n y park ave south new york
 new york n y park ave south new york n y
 new york n y park avenue south new york
 new york n y th ave new york
+new york n y the play club
 new york n y u s a
 new york n y u s a penguin books
 new york n y u sa
@@ -166,28 +187,103 @@ new york n y w rd st apt m new york
 new york n y w st new york
 new york n y w th st new york
 new york n y west street new york n y
+new york new york
+new york new york usa
+new york no nassau st
+new york ny
+new york ny a roc book
 new york ny apt l west rd st new york
 new york ny dag hammarskjold plaza new york
+new york ny distributed by simon
 new york ny p o box new york
 new york ny park ave s new york
 new york ny park ave south new york
 new york ny st marks pl new york
+new york ny u s a
+new york ny usa
+new york oxford university press
 new york p o box new york
 new york park ave s new york
 new york park ave so new york
 new york park ave south new york
 new york park avenue south new york
+new york published for the facsimile text society by columbia university press
 new york rd ave new york
+new york s french
+new york scribner s
+new york signet classics
 new york suffolk a new york
 new york suffolk st new york
 new york th ave new york
+new york the avondale press
+new york the century co
+new york the derrydale press
+new york the wings press
+new york toronto
+new york toronto etc
 new york u s a
 new york union square west new york
+new york usa
+new york vantage press
+new york w e rudge s sons
+new york w morrow
 new york w st new york
+new york w th st bf new york
 new york w th st new york
 new york w th st suite new york
+new york west d st
 new york west end ave dept g new york n y
+new york west new york
 new york west st new york
 new york west street new york
+new york west th st suite new york
+new york west th street new york
+new york west twenty third st
+new york west twenty third street
 new york white st new york
+new york wolffe
+new yort
+newe york
+newyork
+niew eo rk n e
+niu yu rk
+nueva york
+nueva york etc
 nueva york i e new york
+nueva york n y
+nuyork
+ny
+ny i e new york
+ny ny
+nyc
+nyc i e new york
+nyc i e new york city
+nyc ny
+nyc usa
+nyu york
+ozone park n y
+ozone park new york
+ozone park ny ave ozone park
+queens new york city
+queens ny
+rego park n y
+ridgewood n y
+springfield gardens ny
+st george staten island new york
+staten island
+staten island n y
+staten island new york
+staten island ny
+sunnyside n y
+trbeca
+trbeca ny
+tribeca
+tribeca new york
+tribeca new york ny
+tribeca ny
+tribecca
+tudor city n y
+whitestone n y
+woodhaven n y
+woodhaven new york city
+
