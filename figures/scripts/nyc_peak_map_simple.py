@@ -143,7 +143,7 @@ def add_size_legend(fig, all_counts: np.ndarray) -> None:
     fig.legend(
         handles,
         [f"{c:,}" for c in counts_in_range],
-        title="Records at coordinate",
+        title="PS records published at coordinates",
         loc="lower center",
         ncol=len(counts_in_range),
         bbox_to_anchor=(0.5, 0.0),
@@ -201,7 +201,7 @@ def plot_viridis_map(
     cbar = fig.colorbar(
         mappable, ax=axes.tolist(), orientation="vertical", fraction=0.035, pad=0.02
     )
-    cbar.set_label("Records at coordinate")
+    cbar.set_label("PS records published at coordinates")
     add_size_legend(fig, all_counts)
     style.save_figure(output_path)
 
