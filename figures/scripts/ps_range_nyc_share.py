@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Generate a line chart of the New-York-imprint share over time for the largest
-PS numerical sub-ranges, applying the same NYC plotting rule as fig1 (NYC as a
+PS numerical sub-ranges, applying the same NYC plotting rule as ps_nyc_share (NYC as a
 share of placed records) to each range separately. Ranges with too few records
 to plot reliably are dropped; the remainder are ordered by PS range (not by
 record count) and identified in a legend below the plotting area.
@@ -172,13 +172,13 @@ def main():
     ax.set_ylabel("PS share with NYC imprint")
     style.percent_yaxis(ax)
 
-    # Give the axes the same physical layout area as fig1's default 6.4 x 4.8
+    # Give the axes the same physical layout area as ps_nyc_share's default 6.4 x 4.8
     # figure, reserving only the added height for this figure's bottom legend.
     fig.tight_layout(rect=(0, LEGEND_HEIGHT_INCHES / figure_height, 1, 1))
     add_bottom_legend(fig, ax, handles, plotted_keys, totals)
     style.save_figure(args.output)
 
-    # Per-range summary stats, echoing fig1's reporting.
+    # Per-range summary stats, echoing ps_nyc_share's reporting.
     for key in featured_keys:
         series = share[key].dropna()
         if series.empty:

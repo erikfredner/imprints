@@ -1,8 +1,8 @@
 """Per-range NYC-imprint share series, shared by the range figures (fig5, fig7).
 
 Applies the same "smooth the counts, then take the proportion" rule as
-``fig1.compute_city_share`` / ``cross_range.share_series``, but split by the
-numeric PS sub-ranges from :mod:`imprints.ps_ranges`. Unlike ``fig1``, records
+``ps_nyc_share.compute_city_share`` / ``cross_range.share_series``, but split by the
+numeric PS sub-ranges from :mod:`imprints.ps_ranges`. Unlike ``ps_nyc_share``, records
 with **no place of publication** are dropped so each range's share compares
 like-with-like (NYC / (NYC + Other)), matching the ``cross_range`` convention.
 """
@@ -67,7 +67,7 @@ def share_matrix(
     """Return per-range NYC share (%) from count matrices.
 
     Smoothing (if on) is applied to the raw counts before the proportion, so the
-    rule matches ``fig1``/``cross_range``. Year/range cells whose (smoothed)
+    rule matches ``ps_nyc_share``/``cross_range``. Year/range cells whose (smoothed)
     placed-record total is below ``min_n`` become ``NaN`` so sparse early years
     don't spike a range's line to 0%/100% off one or two records.
     """

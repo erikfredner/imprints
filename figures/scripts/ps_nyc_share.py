@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Generate a stacked area plot showing the percentage of PS-class imprints
-published in New York vs. other locations over time.
+Generate a line plot showing the percentage of PS-class imprints published in
+New York City vs. other locations over time.
 """
 
 import argparse
@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 import style
 
 DEFAULT_INPUT = Path(__file__).resolve().parents[2] / "data/PS/data.csv"
-DEFAULT_OUTPUT = Path(__file__).resolve().parents[1] / "outputs/fig1.png"
+DEFAULT_OUTPUT = Path(__file__).resolve().parents[1] / "outputs/ps_nyc_share.png"
 
 #: ``city_group`` value for records lacking a place of publication. Dropped so the
 #: NYC share is NYC / (NYC + Other), matching the other figures.
@@ -69,7 +69,7 @@ def compute_city_share(
     return pct
 
 
-def plot_area(
+def plot_share(
     pct_df: pd.DataFrame,
     city: str,
     start_year: int,
@@ -77,7 +77,7 @@ def plot_area(
     output_path: str = None,
     include_ci: bool = False,
 ) -> None:
-    """Plot a stacked area chart of city vs other locations and save or show."""
+    """Plot a line chart of city's share of records over time and save or show."""
     style.apply_style()
     fig, ax = plt.subplots()
     pct_city = pct_df[1]
@@ -144,7 +144,7 @@ def main():
         "--output",
         type=Path,
         default=DEFAULT_OUTPUT,
-        help="Output file path for the figure (default: figures/outputs/fig1.png)",
+        help="Output file path for the figure (default: figures/outputs/ps_nyc_share.png)",
     )
     parser.add_argument(
         "--ci",
@@ -205,7 +205,7 @@ def main():
         None if pct_highest is None else round(pct_highest, 2),
     )
 
-    plot_area(
+    plot_share(
         pct,
         city=city,
         start_year=args.start_year,

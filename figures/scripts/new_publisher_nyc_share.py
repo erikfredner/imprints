@@ -4,9 +4,10 @@ Generate a line chart of New York City's share of publisher-place-of-publication
 pairings appearing in the PS dataset for the first time each year.
 
 Tests the assumption behind fig3's rising unique-publisher count: that growth is
-happening mostly outside NYC. Unlike fig1 (NYC's share of all PS records each year),
-this tracks where *newly appearing* publisher-place pairings are located, since a
-publisher name alone isn't a stable unit (the same name could relocate).
+happening mostly outside NYC. Unlike ps_nyc_share (NYC's share of all PS records
+each year), this tracks where *newly appearing* publisher-place pairings are
+located, since a publisher name alone isn't a stable unit (the same name could
+relocate).
 """
 
 import argparse
@@ -15,7 +16,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import pandas as pd
 
-import fig1
+import ps_nyc_share
 import style
 
 DEFAULT_INPUT = Path(__file__).resolve().parents[2] / "data/PS/data.csv"
@@ -38,10 +39,10 @@ def compute_first_occurrence(df: pd.DataFrame) -> pd.DataFrame:
     true first appearance is captured even outside the eventual display window;
     only the caller's display/report step restricts to a year range. Rows lacking a
     publisher or place, or with no place of publication, are dropped first, matching
-    fig1's NO_PLACE handling.
+    ps_nyc_share's NO_PLACE handling.
     """
     df = df.dropna(subset=["publisher_clean", "places_clean"])
-    df = df[df["city_group"] != fig1.NO_PLACE]
+    df = df[df["city_group"] != ps_nyc_share.NO_PLACE]
     pairs = df.groupby(["publisher_clean", "places_clean"], as_index=False).agg(
         year_min=("year_min", "min"), city_group=("city_group", "first")
     )
@@ -52,8 +53,8 @@ def compute_peak_share_year(
     df: pd.DataFrame, city: str, start_year: int, end_year: int
 ) -> int:
     """Year within [start_year, end_year] with the highest (unsmoothed) share of
-    all PS records in `city`, per fig1.compute_city_share."""
-    pct = fig1.compute_city_share(
+    all PS records in `city`, per ps_nyc_share.compute_city_share."""
+    pct = ps_nyc_share.compute_city_share(
         df, city=city, start_year=start_year, end_year=end_year, smooth=False
     )
     return int(pct[1].idxmax())
@@ -165,7 +166,7 @@ def main():
         default=None,
         help="Year at which to split the before/after probability and odds "
         "summary printed to stdout (default: the year of peak NYC share of all "
-        "PS records, per fig1.compute_city_share)",
+        "PS records, per ps_nyc_share.compute_city_share)",
     )
     parser.add_argument(
         "--window",
@@ -205,7 +206,7 @@ def main():
 
     print_period_probability(pairs, city, args.start_year, split_year, args.end_year)
 
-    pct = fig1.compute_city_share(
+    pct = ps_nyc_share.compute_city_share(
         pairs,
         city=city,
         start_year=args.start_year,

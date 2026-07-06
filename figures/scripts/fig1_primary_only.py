@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Variant of fig1.py: plots NYC share of PS-class imprints twice -- once for
-all records, once with is_secondary == True (criticism/scholarship/reference,
+Variant of ps_nyc_share.py: plots NYC share of PS-class imprints twice -- once
+for all records, once with is_secondary == True (criticism/scholarship/reference,
 per imprints.secondary_classification) excluded, leaving primary literature
 only.
 """
@@ -13,7 +13,7 @@ from pathlib import Path
 import pandas as pd
 import matplotlib.pyplot as plt
 
-import fig1
+import ps_nyc_share
 import style
 
 DEFAULT_INPUT = Path(__file__).resolve().parents[2] / "data/PS/data.csv"
@@ -178,11 +178,11 @@ def main():
 
     city = "New York City" if args.city == "New York" else args.city
 
-    df = fig1.load_data(args.input_csv)
+    df = ps_nyc_share.load_data(args.input_csv)
     df = merge_secondary(df, args.secondary_csv)
     df_primary = df[df["is_secondary"] != True]  # noqa: E712 (keeps False and NaN)
 
-    pct_all = fig1.compute_city_share(
+    pct_all = ps_nyc_share.compute_city_share(
         df,
         city=city,
         start_year=args.start_year,
@@ -190,7 +190,7 @@ def main():
         window=args.window,
         smooth=args.smooth,
     )
-    pct_primary = fig1.compute_city_share(
+    pct_primary = ps_nyc_share.compute_city_share(
         df_primary,
         city=city,
         start_year=args.start_year,

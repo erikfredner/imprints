@@ -3,8 +3,8 @@
 Centralizes the font, DPI, and color style so every figure looks the same, and
 provides a single helper that writes each figure as PNG, SVG, and PDF.
 
-These scripts run standalone (``python figures/scripts/fig1.py``), so the
-script directory is on ``sys.path`` and siblings can ``import style``.
+These scripts run standalone (``python figures/scripts/ps_nyc_share.py``), so
+the script directory is on ``sys.path`` and siblings can ``import style``.
 """
 
 from pathlib import Path

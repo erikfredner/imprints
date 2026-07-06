@@ -48,7 +48,7 @@ def build_panels(
     """Return ``(shares, weights, totals, aggregate)`` year x range panels.
 
     Counts are optionally rolling-smoothed before shares/weights are taken, so
-    the rule matches fig1/cross_range. ``totals`` are placed records per
+    the rule matches ps_nyc_share/cross_range. ``totals`` are placed records per
     range-year (used to weight the confirming regression); ``aggregate`` is the
     overall NYC share S_t. Shares/aggregate are percentages.
     """

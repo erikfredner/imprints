@@ -22,7 +22,7 @@ import numpy as np
 import pandas as pd
 from matplotlib.lines import Line2D
 
-import fig1
+import ps_nyc_share
 import style
 
 DEFAULT_INPUT = Path(__file__).resolve().parents[2] / "data/PS/geocoded.csv"
@@ -71,11 +71,12 @@ def filter_us_conus(df: pd.DataFrame) -> pd.DataFrame:
 
 def compute_peak_year(df: pd.DataFrame, start_year: int, end_year: int) -> int:
     """NYC's peak share year over [start_year, end_year], via
-    fig1.compute_city_share -- the same computation fig1.py itself reports,
-    reused rather than reimplemented (see new_publisher_nyc_share.py for the
-    same pattern). Runs on the full dataframe, not the US/CONUS subset: NYC's
-    share is of all PS records, independent of geocoding success."""
-    pct = fig1.compute_city_share(
+    ps_nyc_share.compute_city_share -- the same computation ps_nyc_share.py
+    itself reports, reused rather than reimplemented (see
+    new_publisher_nyc_share.py for the same pattern). Runs on the full
+    dataframe, not the US/CONUS subset: NYC's share is of all PS records,
+    independent of geocoding success."""
+    pct = ps_nyc_share.compute_city_share(
         df, city="New York City", start_year=start_year, end_year=end_year, smooth=False
     )
     return int(pct[1].idxmax())

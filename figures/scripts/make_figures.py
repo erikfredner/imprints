@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Regenerate every figure (fig1-fig7 and predict) into figures/outputs/.
+"""Regenerate every figure (ps_nyc_share, fig2-fig7, and predict) into
+figures/outputs/.
 
 Runs each figure script as a subprocess so each keeps its own argparse defaults
 and an isolated matplotlib state. Exits non-zero if any figure fails.
@@ -12,7 +13,7 @@ from pathlib import Path
 
 SCRIPTS_DIR = Path(__file__).resolve().parent
 SCRIPTS = [
-    "fig1.py",
+    "ps_nyc_share.py",
     "fig2.py",
     "fig3.py",
     "nyc_and_publishers.py",

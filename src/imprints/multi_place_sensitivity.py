@@ -126,7 +126,7 @@ def compute_city_share(
 
 def compute_crossing_stats(pct_series: pd.Series) -> dict:
     """
-    Replicates fig1.py's crossing/peak logic: 50% thresholds use the rounded
+    Replicates ps_nyc_share.py's crossing/peak logic: 50% thresholds use the rounded
     series; peak year/value use the raw series.
     """
     if pct_series.empty:

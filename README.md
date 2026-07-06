@@ -172,7 +172,7 @@ python figures/scripts/make_figures.py
 or run an individual figure:
 
 ```bash
-python figures/scripts/fig1.py
+python figures/scripts/ps_nyc_share.py
 ```
 
 By default, they assume that you have placed the outputs of `data_collection` and `data_cleaning` in `data/PS/data.csv`

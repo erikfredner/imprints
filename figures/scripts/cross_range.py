@@ -162,7 +162,7 @@ def _spaghetti(df, keys, highlight, title, ylabel, out_path, window, smooth):
 
 
 def _ps_vs_rest(special, out_path, window, smooth):
-    """PS vs aggregate not-PS, with 95% binomial CIs (as in fig1)."""
+    """PS vs aggregate not-PS, with 95% binomial CIs (as in ps_nyc_share)."""
     style.apply_style()
     fig, ax = plt.subplots()
     z = 1.96
