@@ -181,6 +181,16 @@ def parse_class(class_str):
     return m.group(1), int(m.group(2)) if m.group(2) else None
 
 
+# LC classification carves Canadian literature (English) out of the PS
+# schedule at PS8001-8599 -- a different national literature that happens to
+# share the PS prefix, not American literature. This project's "PS" always
+# means US literary publishing (see CLAUDE.md), so these numbers are never a
+# match under any class_range, including a bare "PS" or a one-letter "P".
+# Duplicated in imprints.data_cleaning.matches_range; keep both in sync.
+PS_CANADIAN_LIT_MIN = 8001
+PS_CANADIAN_LIT_MAX = 8599
+
+
 def matches_range(classification, prefix, num_min=None, num_max=None):
     """
     Test if a classification matches a given prefix and optional num range.
@@ -199,6 +209,12 @@ def matches_range(classification, prefix, num_min=None, num_max=None):
         cls == prefix or (len(prefix) == 1 and cls.startswith(prefix))
     )
     if not prefix_matches:
+        return False
+    if (
+        cls == "PS"
+        and num is not None
+        and PS_CANADIAN_LIT_MIN <= num <= PS_CANADIAN_LIT_MAX
+    ):
         return False
     if num_min is not None and (num is None or num < num_min):
         return False
