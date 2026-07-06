@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Regenerate every figure (ps_nyc_share, ps_nyc_counts, ps_unique_publishers,
-fig4-fig7, and predict) into figures/outputs/.
+and nyc_and_publishers) into figures/outputs/.
 
 Runs each figure script as a subprocess so each keeps its own argparse defaults
 and an isolated matplotlib state. Exits non-zero if any figure fails.
@@ -17,16 +17,6 @@ SCRIPTS = [
     "ps_nyc_counts.py",
     "ps_unique_publishers.py",
     "nyc_and_publishers.py",
-    "new_publisher_nyc_share.py",
-    "fig4.py",
-    "ps_range_nyc_share.py",
-    "fig6.py",
-    "fig7.py",
-    "city_growth.py",
-    "unique_places_per_100.py",
-    "nyc_peak_map.py",
-    "nyc_peak_map_diverging.py",
-    "predict.py",
 ]
 
 
