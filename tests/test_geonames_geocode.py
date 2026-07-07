@@ -195,8 +195,18 @@ def test_resolve_llm_scope_prefers_admin1_over_country(tmp_path):
     assert city == "quebec city"
 
 
-def test_resolve_llm_scope_unresolvable_returns_none_scope(tmp_path):
+def test_resolve_llm_scope_country_name_outside_downloaded_set(tmp_path):
+    # "france" resolves through the country-name crosswalk even though FR is
+    # not among the downloaded admin1 countries: the llm pass covers country
+    # names place_name_008 never uses (see README, "GeoNames reference data").
     admin1_names = mpg.load_admin1_names(_admin1_fixture(tmp_path), ["US", "CA"])
     scope, city = gg._resolve_llm_scope("paris, france", admin1_names, ["US", "CA"])
-    assert scope is None
+    assert scope == ("FR", None)
     assert city == "paris"
+
+
+def test_resolve_llm_scope_unresolvable_returns_none_scope(tmp_path):
+    admin1_names = mpg.load_admin1_names(_admin1_fixture(tmp_path), ["US", "CA"])
+    scope, city = gg._resolve_llm_scope("x, atlantis", admin1_names, ["US", "CA"])
+    assert scope is None
+    assert city == "x"

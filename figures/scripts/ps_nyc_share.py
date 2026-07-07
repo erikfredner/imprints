@@ -138,7 +138,7 @@ def main():
         "--smooth",
         action=argparse.BooleanOptionalAction,
         default=False,
-        help="Apply rolling smoothing to annual percentages (default: true)",
+        help="Apply rolling smoothing to annual percentages (default: false)",
     )
     parser.add_argument(
         "--output",

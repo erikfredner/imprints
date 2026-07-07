@@ -122,12 +122,25 @@ def get_digits_for_class(classification, class_range):
     return num
 
 
+# 4-digit runs in 260/264 $c or publisher text are not always years: street
+# numbers ("1420 Chestnut Street"), zip-code fragments ("New York, 10014" ->
+# 1001), and typos all produce them. A run embedded in a longer digit string
+# is never a year, and this corpus's plausible publication years fall well
+# inside this window.
+YEAR_MIN_PLAUSIBLE = 1500
+YEAR_MAX_PLAUSIBLE = 2030
+_YEAR_RE = re.compile(r"(?<!\d)\d{4}(?!\d)")
+
+
 def get_year_int(year):
-    """Extract a four-digit year from a string (or return None)."""
+    """Extract the first plausible four-digit year from a string (or None)."""
     if year is None or (isinstance(year, float) and pd.isna(year)):
         return None
-    match = re.search(r"\d{4}", str(year))
-    return int(match.group()) if match else None
+    for match in _YEAR_RE.finditer(str(year)):
+        value = int(match.group())
+        if YEAR_MIN_PLAUSIBLE <= value <= YEAR_MAX_PLAUSIBLE:
+            return value
+    return None
 
 
 def get_years_ints(years):

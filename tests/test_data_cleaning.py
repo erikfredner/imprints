@@ -28,6 +28,17 @@ def test_get_year_int_forms():
     assert cl.get_year_int(None) is None
 
 
+def test_get_year_int_rejects_non_year_digit_runs():
+    # Street numbers and other implausible values are not years.
+    assert cl.get_year_int("1420 Chestnut Street") is None
+    assert cl.get_year_int("8728") is None
+    # A run embedded in a longer digit string (e.g. a zip code) is never a
+    # year -- "New York, 10014" must not yield 1001.
+    assert cl.get_year_int("New York, 10014") is None
+    # A plausible year is still found even after implausible runs.
+    assert cl.get_year_int("Suite 8100, est. 1852") == 1852
+
+
 def test_get_years_ints_collection_and_scalar():
     assert cl.get_years_ints(["c1995", "[1990]", "n.d."]) == 1990
     assert cl.get_years_ints([]) is None

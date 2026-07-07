@@ -22,21 +22,25 @@ DEFAULT_SECONDARY_CSV = (
 )
 DEFAULT_OUTPUT = Path(__file__).resolve().parents[1] / "outputs/fig1_primary_only.png"
 
-_LCCN_DIGITS_RE = re.compile(r"\d+")
+_LCCN_KEY_RE = re.compile(r"([a-z]*)\s*(\d+)")
 
 
 def normalize_lccn(value):
-    """Extract the leading run of digits from an lccn value as an int.
+    """Normalize an lccn value to "<alpha prefix><digits>" (zero-padding and
+    revision suffixes stripped) for joining.
 
     data.csv's lccn column mixes plain-numeric and MARC-style values with
     trailing revision suffixes (e.g. "064012140 //r97"), which makes a raw
     string/int merge against secondary_classification.csv silently drop
-    matches. Both sides are normalized through this before joining.
+    matches. The alphabetic prefix is part of the control number and must be
+    kept: distinct records can share digits (e.g. "07003342" vs
+    "ca 07003342"), and collapsing them to digits alone duplicates rows in
+    the merge. Both sides are normalized through this before joining.
     """
     if pd.isna(value):
         return None
-    m = _LCCN_DIGITS_RE.search(str(value))
-    return int(m.group()) if m else None
+    m = _LCCN_KEY_RE.search(str(value).strip().lower())
+    return f"{m.group(1)}{int(m.group(2))}" if m else None
 
 
 def merge_secondary(df: pd.DataFrame, secondary_csv: Path) -> pd.DataFrame:
@@ -46,8 +50,17 @@ def merge_secondary(df: pd.DataFrame, secondary_csv: Path) -> pd.DataFrame:
     df["lccn_norm"] = df["lccn"].map(normalize_lccn)
     sec["lccn_norm"] = sec["lccn"].map(normalize_lccn)
     sec = sec.dropna(subset=["lccn_norm"])
+    n_dup = int(sec["lccn_norm"].duplicated().sum())
+    if n_dup:
+        print(f"Dropping {n_dup:,} secondary rows with colliding lccn_norm keys.")
+        sec = sec.drop_duplicates("lccn_norm")
 
     merged = df.merge(sec[["lccn_norm", "is_secondary"]], on="lccn_norm", how="left")
+    if len(merged) != len(df):
+        raise ValueError(
+            f"lccn_norm join changed the row count ({len(df):,} -> "
+            f"{len(merged):,}); the join key is not unique."
+        )
     unmatched = merged["is_secondary"].isna().sum()
     print(
         f"Rows without a secondary-classification match: {unmatched:,} "
@@ -166,7 +179,7 @@ def main():
         "--smooth",
         action=argparse.BooleanOptionalAction,
         default=False,
-        help="Apply rolling smoothing to annual percentages (default: true)",
+        help="Apply rolling smoothing to annual percentages (default: false)",
     )
     parser.add_argument(
         "--output",

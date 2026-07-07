@@ -2,15 +2,9 @@
 
 Code supporting the essay, "Leaving New York? Locations of US Literary Publishing Since 1945."
 
-The question behind the essay: among books the Library of Congress classifies
-as American literature (LC class `PS`), what share was published in New York
-City, and how has that share changed since 1945? Answering it means turning
-raw library-catalog records into a table of (book, year, place of
-publication), resolving each place to a lat/lon, and then aggregating.
-
 ## Data
 
-Two external inputs are needed: the LOC MARC dataset (Step 1) and the
+Two freely available external inputs are needed: the LOC MARC dataset (Step 1) and the
 GeoNames gazetteer (Step 3). Fetch both with:
 
 ```bash
@@ -19,16 +13,13 @@ scripts/download_data.sh
 
 or individually via `scripts/download_data.sh marc` / `scripts/download_data.sh geonames`.
 
-The LOC download can't be fully automated: `hdl.loc.gov`'s item page for
-this dataset sits behind a Cloudflare bot challenge that `curl` can't pass,
-and no stable direct file URL is published. If the script reports it
+The LOC download may not succeed automatically. If the script reports it
 couldn't fetch the MARC dataset automatically, follow the printed manual
 steps (download the dataset from
 <https://lccn.loc.gov/2020445551> in a browser, save the zip where the
-script tells you, then re-run it to extract). GeoNames has no such
-restriction and downloads automatically.
+script tells you, then re-run it to extract).
 
-## The pipeline, step by step
+## Pipeline
 
 1. **Parse the raw MARC dump** (`imprints.data_collection`) into per-file
    pickles of record dicts — one dict per catalog record, keeping every
@@ -41,15 +32,16 @@ restriction and downloads automatically.
 3. **Geocode** each place of publication to a lat/lon (`imprints
    .marc_place_geonames`, `imprints.geonames_geocode`,
    `imprints.llm_geocode`, `imprints.join_geocoded`,
-   `imprints.geocode_compare`) — mostly for free, deterministically, against
-   a local gazetteer; an LLM only handles what that can't resolve.
+   `imprints.geocode_compare`) — mostly deterministically against
+   a local gazetteer. An LLM cleans messy places of publication
+   that can't be resolved deterministically (< 10% of US records).
 4. **Plot** (`figures/scripts/*.py`) the cleaned/geocoded CSVs into the
    figures reported in the essay.
 5. **Validate** (several smaller modules under `src/imprints/`) that the
    headline finding isn't an artifact of a specific modeling choice —
    how multi-place records are weighted, whether PS is unusual among LC
    classes, whether the NYC label agrees with an independently-derived one,
-   etc. These don't feed the figures; they're checks on the figures.
+   etc.
 
 Each step is detailed below, with the analytical decisions that shape it.
 
@@ -67,9 +59,7 @@ python -m imprints.data_collection \
 This creates `data/PS` containing `.pkl` files with data from the `.xml.gz` files that we will then clean.
 
 The MARC files are tens of gigabytes of XML; this step streams each record
-with `lxml.iterparse` and discards it immediately after reading, instead of
-loading a whole file into memory — a whole-file parse of a multi-GB XML
-document would exhaust memory long before it exhausted the file. Files are
+with `lxml.iterparse` and discards it immediately after reading. Files are
 processed in parallel, one worker per CPU core.
 
 Key decisions:
@@ -98,9 +88,8 @@ Key decisions:
 - **Extra structured signals are captured beyond the place-name text**, purely
   as independent columns that later steps *may* use for disambiguation or QA
   — none of them touch the core NYC/Other classification: the 008 control
-  field (raw; byte-level decoding is left to consumers), `044` country
-  codes, the `752` hierarchical place name (country › state › county › city
-  › neighborhood), subject/genre headings (`600`/`610`/`611`/`630`/`650`
+  field, `044` country
+  codes, the `752` hierarchical place name, subject/genre headings (`600`/`610`/`611`/`630`/`650`
   /`651`/`655`), local call numbers, and author birth/death dates. The last
   three exist specifically to support `imprints.secondary_classification`
   (see below), not the core place pipeline.
@@ -124,7 +113,7 @@ Key decisions:
 
 - **NYC identification is LLM-curated, not pattern-matched, and frozen into
   a reviewable file (`nyc_variants.txt`).** Values in `nyc_variants.txt` were
-  identified by `gpt-5.2-2025-12-11` as referencing NYC, from a complete list
+  identified by `gpt-5.2-2025-12-11` as referencing NYC and verified by hand from a complete list
   of unique cleaned placenames derived from the PS range. Fuzzy string
   matching (`"new york city"`, `"nyc"`, etc.) undercounts: publishers give
   their location at the neighborhood level (`"Flushing, NY"`) or even more
@@ -162,7 +151,7 @@ Key decisions:
   (`place_name_008`, `country_names_044`, `place_752`) but deliberately do
   not feed `places`/`places_clean`/`city_group`.** They exist as
   cross-checks and as scoping signal for the geocoding step below, kept
-  strictly separate from the label the essay's figures are built on.
+  strictly separate from the label the essay's first two figures are built on.
 
 ## Additional place-of-publication signal (008, 044, 752)
 
@@ -354,7 +343,7 @@ uv run pytest
 
 ## Step 4: Visualizations and reported figures
 
-Scripts to create plots and figures reported inline live in `figures/scripts/`. Regenerate them all at once:
+Scripts to create plots and figures reported inline live in `figures/scripts/`. Regenerate every figure that needs only `data/PS/data.csv` at once:
 
 ```bash
 python figures/scripts/make_figures.py
@@ -366,9 +355,11 @@ or run an individual figure:
 python figures/scripts/ps_nyc_share.py
 ```
 
-By default, they assume that you have placed the outputs of `data_collection` and `data_cleaning` in `data/PS/data.csv`
+By default, they assume that you have placed the outputs of `data_collection` and `data_cleaning` in `data/PS/data.csv`. Two figures need more than that CSV and are therefore *not* run by `make_figures.py`: `fig1_primary_only.py` (needs `data/PS/secondary_classification.csv`) and `nyc_peak_map_simple.py` (needs `data/PS/geocoded.csv` plus `cartopy`); run them individually once their inputs exist.
 
-Generated figures are written to `figures/outputs/` by default, each as PNG, SVG, and PDF. Shared plotting defaults (Helvetica Now Micro font, 1200 DPI, grayscale style, output formats) live in `figures/scripts/style.py`.
+Generated figures are written to `figures/outputs/` by default, each as PNG, SVG, and PDF. Shared plotting defaults (Helvetica Now Micro font, 1200 DPI, the Okabe-Ito colorblind-safe palette with marker/linestyle cycling so series stay separable in grayscale print, output formats) live in `figures/scripts/style.py`.
+
+Smoothing defaults differ deliberately by figure: the headline share and count figures (`ps_nyc_share`, `fig1_primary_only`) plot raw annual values, while the noisier many-series and first-appearance figures (`ps_range_nyc_share`, `new_publisher_nyc_share`) apply a 5-year rolling mean by default. Every script exposes `--smooth`/`--no-smooth` to override.
 
 What each figure script does and computes:
 
@@ -391,6 +382,18 @@ What each figure script does and computes:
   and the unique-publisher count — checking whether the growth of
   publishing outside NYC tracks the growth in the number of distinct
   publishers.
+- **`ps_range_nyc_share.py`** — the NYC-share line of `ps_nyc_share` computed
+  separately for each large PS sub-range (see `imprints.ps_ranges`), backing
+  the claim that the post-peak decline is not driven by any one sub-range.
+- **`new_publisher_nyc_share.py`** — NYC's share of publisher-place pairings
+  appearing in PS for the *first time* each year, plus the pooled
+  before/after-peak odds comparison cited in the essay ("the odds of a new
+  PS publisher having an NYC imprint fall to less than half").
+- **`fig1_primary_only.py`** — not run by `make_figures.py` (it needs
+  `data/PS/secondary_classification.csv`). Re-plots the `ps_nyc_share` line
+  with secondary literature (criticism/scholarship/reference, per
+  `imprints.secondary_classification`) excluded, backing the footnote that
+  excluding it changes no core finding.
 - **`nyc_peak_map_simple.py`** — not run by `make_figures.py` (it needs
   `data/PS/geocoded.csv`, i.e. the geocoding step above, plus `cartopy`, a
   heavier optional dependency). Maps every geocoded US coordinate before vs.
@@ -452,4 +455,4 @@ rather than an artifact of it.
 
 ## AI Statement
 
-I used [OpenAI's `codex`](https://github.com/openai/codex) to help write and refactor code.
+I used LLMs by Anthropic and OpenAI to help write, refactor, and document code.

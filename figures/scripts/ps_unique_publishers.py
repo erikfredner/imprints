@@ -13,7 +13,9 @@ import pandas as pd
 import style
 
 DEFAULT_INPUT = Path(__file__).resolve().parents[2] / "data/PS/data.csv"
-DEFAULT_OUTPUT = Path(__file__).resolve().parents[1] / "outputs/ps_unique_publishers.png"
+DEFAULT_OUTPUT = (
+    Path(__file__).resolve().parents[1] / "outputs/ps_unique_publishers.png"
+)
 YEAR_START = 1900
 YEAR_END = 2010
 

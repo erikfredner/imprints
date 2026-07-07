@@ -173,7 +173,9 @@ def plot_viridis_map(
 
     panels = [
         (axes[0], before_counts, f"{start_year}-{peak_year} (NYC peak)"),
-        (axes[1], after_counts, f"{peak_year}-{end_year}"),
+        # The split is inclusive of the peak year on the "before" side
+        # (year_min <= peak_year), so the second panel starts the year after.
+        (axes[1], after_counts, f"{peak_year + 1}-{end_year}"),
     ]
     mappable = None
     for ax, counts, title in panels:

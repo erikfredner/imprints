@@ -13,18 +13,19 @@ The input dataset is **not** in the repo. Download the `.xml.gz` MARC files from
 Managed with `uv` (Python ≥3.12; `.python-version` pins 3.14). The `imprints` package lives in `src/imprints/` and is run as modules from the repo root.
 
 ```bash
-uv sync                 # install deps + dev (ruff)
+uv sync                 # install deps + dev (ruff, pytest)
 uv run ruff check .     # lint
 uv run ruff format .    # format
+uv run pytest           # tests (fast; no data files needed)
 ```
 
-There is no test suite, no build step, and no CI. Prefix any run command with `uv run` (e.g. `uv run python -m imprints.data_cleaning ...`).
+There is no build step and no CI; run the linter and tests locally. Prefix any run command with `uv run` (e.g. `uv run python -m imprints.data_cleaning ...`).
 
 ## Pipeline (run in order)
 
 1. **`imprints.data_collection`** — parse raw MARC `.xml.gz` → per-file `.pkl` lists of record dicts. Streams records with `lxml` `iterparse` and fans out across CPUs with `ProcessPoolExecutor`. Writes to `data/<class_range>/`. Keeps *all* records but flags those matching `--class_range`.
 2. **`imprints.data_cleaning`** — load all pickles → filter to the class range → one flat CSV. This is where normalization happens (see below). Output: `data/PS/data.csv`, the input every figure script expects by default.
-3. **`figures/scripts/figN.py`** and **`figures/scripts/predict.py`** — read the cleaned CSV and emit `figures/outputs/<name>.{png,svg,pdf}`. Each is a standalone `argparse` script defaulting to `data/PS/data.csv` in / `figures/outputs/<name>.png` out (the SVG/PDF siblings are derived from the stem). `predict.py` fits the `statsmodels` linear model cited inline. `figures/scripts/make_figures.py` regenerates all of them; shared plot defaults (font, 1200 DPI, grayscale, multi-format save) live in `figures/scripts/style.py`.
+3. **`figures/scripts/*.py`** (descriptively named: `ps_nyc_share.py`, `nyc_and_publishers.py`, …) — read the cleaned CSV and emit `figures/outputs/<name>.{png,svg,pdf}`. Each is a standalone `argparse` script defaulting to `data/PS/data.csv` in / `figures/outputs/<name>.png` out (the SVG/PDF siblings are derived from the stem). `figures/scripts/make_figures.py` regenerates every figure that needs only `data.csv`; `fig1_primary_only.py` (needs `secondary_classification.csv`) and `nyc_peak_map_simple.py` (needs `geocoded.csv` + cartopy) run individually. Shared plot defaults (font, 1200 DPI, Okabe-Ito colors with marker/linestyle cycling, multi-format save) live in `figures/scripts/style.py`.
 
 Helper modules: `imprints.get_unique_places` (dump sorted unique `places_clean`, used to build the NYC variant list) and `imprints.repeats` (% of LCCNs appearing more than once).
 

@@ -74,8 +74,16 @@ def main():
         description="Extract sorted unique places of publication for PS records "
         "(excluding PS8000+), reading directly from imprints.data_collection pickles."
     )
-    parser.add_argument("--input_dir", required=True, help="Directory of .pkl files from imprints.data_collection")
-    parser.add_argument("--output_txt", required=True, help="Path to write unique places (one per line).")
+    parser.add_argument(
+        "--input_dir",
+        required=True,
+        help="Directory of .pkl files from imprints.data_collection",
+    )
+    parser.add_argument(
+        "--output_txt",
+        required=True,
+        help="Path to write unique places (one per line).",
+    )
     args = parser.parse_args()
 
     unique_places = get_ps_places(args.input_dir, args.output_txt)
