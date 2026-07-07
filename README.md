@@ -1,5 +1,7 @@
 # US Literature in NYC
 
+[![DOI](https://zenodo.org/badge/966983150.svg)](https://doi.org/10.5281/zenodo.21245095)
+
 Code supporting our essay about publishing US literature in NYC.
 
 ## Setup
