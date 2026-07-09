@@ -378,7 +378,10 @@ def expand_places(value):
     """Normalize a record's places value then split each into component cities.
 
     Produces the list that `cleaning_pipeline` explodes into one row per city,
-    order-preserving and deduped. Missing places are preserved as [None].
+    order-preserving and with exact raw repeats removed. The pipeline also
+    deduplicates after mechanical normalization, so variants such as
+    ``New York :`` and ``[New York] :`` collapse too. Missing places are
+    preserved as [None].
     """
     expanded = []
     for place in normalize_places(value):
@@ -456,8 +459,14 @@ def cleaning_pipeline(df, class_range):
     df["places_clean"] = df["places"].map(clean_string)
     df["city_group"] = df["places_clean"].map(get_target_cities)
 
-    # Optionally drop any rows with missing numeric classification digits or year
+    # Drop rows with missing numeric classification digits or year before
+    # deduplicating the normalized publication-place observations. Deduplicating
+    # the raw exploded strings is insufficient: catalog records can repeat a
+    # place as variants such as ``New York :`` and ``[New York] :``.
     df = df[df["class_digits"].notnull() & df["year_min"].notnull()]
+    df = df.drop_duplicates(
+        subset=["lccn", "places_clean", "year_min"], keep="first"
+    ).reset_index(drop=True)
 
     return df
 

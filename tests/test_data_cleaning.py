@@ -206,6 +206,22 @@ def test_cleaning_pipeline_year_min_uses_publisher_year():
     assert (out["year_min"] == 1980).all()
 
 
+def test_cleaning_pipeline_deduplicates_normalized_places_per_record_and_year():
+    record = _record(
+        ["PS3553"],
+        ["New York :", "[New York] :", "Boston :"],
+        ["1980"],
+    )
+    record["lccn"] = "duplicate-place"
+
+    out = cl.cleaning_pipeline(pd.DataFrame([record]), cl.parse_range_spec("PS"))
+
+    # The two raw NYC variants clean to the same publication-place observation;
+    # Boston remains a distinct co-publication place.
+    assert out["places_clean"].tolist() == ["new york", "boston"]
+    assert not out.duplicated(["lccn", "places_clean", "year_min"]).any()
+
+
 def test_cleaning_pipeline_top_level_class_and_single_place_conjunctions():
     df = pd.DataFrame(
         [
