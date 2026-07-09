@@ -21,6 +21,51 @@ def test_build_geo_key_normalizes_none_places_clean():
     assert pk.build_geo_key(None, None) == "||"
 
 
+def test_build_geo_key_separates_nyc_multiplace_candidate():
+    normal = pk.build_geo_key("new york", "England")
+    candidate = pk.build_geo_key(
+        "new york",
+        "England",
+        pk.GEO_KEY_POLICY_NYC_MULTIPLACE_CANDIDATE,
+    )
+    assert candidate == "new york||England||nyc_multiplace_candidate"
+    assert candidate != normal
+
+
+def test_add_geocode_key_columns_marks_only_multiplace_nyc_component():
+    df = pd.DataFrame(
+        [
+            {
+                "lccn": "multi",
+                "places_clean": "new york",
+                "place_name_008": "England",
+                "city_group": "New York City",
+            },
+            {
+                "lccn": "multi",
+                "places_clean": "london",
+                "place_name_008": "England",
+                "city_group": "Other",
+            },
+            {
+                "lccn": "single",
+                "places_clean": "new york",
+                "place_name_008": "England",
+                "city_group": "New York City",
+            },
+        ]
+    )
+
+    out = pk.add_geocode_key_columns(df)
+
+    assert out.loc[0, "geo_key_policy"] == pk.GEO_KEY_POLICY_NYC_MULTIPLACE_CANDIDATE
+    assert out.loc[0, "geo_key"] == "new york||England||nyc_multiplace_candidate"
+    assert out.loc[1, "geo_key_policy"] == pk.GEO_KEY_POLICY_008
+    assert out.loc[1, "geo_key"] == "london||England"
+    assert out.loc[2, "geo_key_policy"] == pk.GEO_KEY_POLICY_008
+    assert out.loc[2, "geo_key"] == "new york||England"
+
+
 def test_build_place_hint_with_008_only():
     assert pk.build_place_hint("Georgia") == "marc_008_place_hint: Georgia"
 

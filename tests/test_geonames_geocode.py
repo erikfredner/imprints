@@ -1,7 +1,10 @@
 """Tests for imprints.geonames_geocode."""
 
+import pandas as pd
+
 from imprints import geonames_geocode as gg
 from imprints import marc_place_geonames as mpg
+from imprints import place_keys as pk
 
 
 def _geonames_line(
@@ -164,6 +167,136 @@ def test_match_place_no_candidate_returns_none(tmp_path):
     index = gg.load_geonames_index([_write_country_file(tmp_path, "US.txt", lines)])
     assert gg.match_place("nonexistent town", ("US", "GA"), index) is None
     assert gg.match_place("", ("US", "GA"), index) is None
+
+
+def test_direct_multiplace_nyc_component_overrides_conflicting_008_scope(tmp_path):
+    """A record-level England 008 applies to London, not its NYC co-place.
+
+    The NYC component gets a distinct candidate key and is resolved to the
+    canonical NYC coordinate. A single-place NYC-labelled row sharing the old
+    ``new york||England`` key remains an ordinary England-scoped match.
+    """
+    us = _write_country_file(
+        tmp_path,
+        "US.txt",
+        [
+            _geonames_line(
+                1,
+                "New York City",
+                alternatenames="New York,NYC",
+                country_code="US",
+                admin1_code="NY",
+                population=8000000,
+            )
+        ],
+    )
+    gb = _write_country_file(
+        tmp_path,
+        "GB.txt",
+        [
+            _geonames_line(
+                2,
+                "New York",
+                country_code="GB",
+                admin1_code="ENG",
+                population=100,
+            ),
+            _geonames_line(
+                3,
+                "London",
+                country_code="GB",
+                admin1_code="ENG",
+                population=9000000,
+            ),
+        ],
+    )
+    index = gg.load_geonames_index([us, gb])
+
+    input_csv = tmp_path / "input.csv"
+    pd.DataFrame(
+        [
+            {
+                "lccn": "multi",
+                "places": "New York",
+                "places_clean": "new york",
+                "place_name_008": "England",
+                "city_group": "New York City",
+            },
+            {
+                "lccn": "multi",
+                "places": "London",
+                "places_clean": "london",
+                "place_name_008": "England",
+                "city_group": "Other",
+            },
+            {
+                "lccn": "single",
+                "places": "New York",
+                "places_clean": "new york",
+                "place_name_008": "England",
+                "city_group": "New York City",
+            },
+        ]
+    ).to_csv(input_csv, index=False)
+    crosswalk = tmp_path / "crosswalk.csv"
+    crosswalk.write_text(
+        "place_name_008,geonames_country_code,geonames_admin1_code\n"
+        "England,GB,ENG\n"
+        "New York (State),US,NY\n"
+    )
+    output_csv = tmp_path / "direct.csv"
+
+    gg.run_direct(str(input_csv), str(crosswalk), index, str(output_csv))
+    out = pd.read_csv(output_csv).set_index("geo_key")
+
+    candidate_key = pk.build_geo_key(
+        "new york",
+        "England",
+        pk.GEO_KEY_POLICY_NYC_MULTIPLACE_CANDIDATE,
+    )
+    assert str(out.loc[candidate_key, "geonames_id"]) == "1"
+    assert out.loc[candidate_key, "geocode_policy"] == "nyc_multiplace_override"
+    assert "overrides 'England'" in out.loc[candidate_key, "geocode_reason"]
+
+    # The other co-publication component still follows the 008 scope.
+    assert str(out.loc["london||England", "geonames_id"]) == "3"
+    assert out.loc["london||England", "geocode_policy"] == "direct_008"
+
+    # A single-place row is not changed merely because its city label is NYC.
+    assert str(out.loc["new york||England", "geonames_id"]) == "2"
+    assert out.loc["new york||England", "geocode_policy"] == "direct_008"
+
+
+def test_direct_multiplace_nyc_candidate_keeps_correct_new_york_008_scope(tmp_path):
+    lines = [
+        _geonames_line(
+            1,
+            "New York City",
+            alternatenames="New York",
+            country_code="US",
+            admin1_code="NY",
+            population=8000000,
+        )
+    ]
+    index = gg.load_geonames_index([_write_country_file(tmp_path, "US.txt", lines)])
+    crosswalk = tmp_path / "crosswalk.csv"
+    crosswalk.write_text(
+        "place_name_008,geonames_country_code,geonames_admin1_code\n"
+        "New York (State),US,NY\n"
+    )
+    row = pd.Series(
+        {
+            "places_clean": "new york",
+            "place_name_008": "New York (State)",
+            "geo_key_policy": pk.GEO_KEY_POLICY_NYC_MULTIPLACE_CANDIDATE,
+        }
+    )
+
+    result, policy, reason = gg.resolve_direct_place(row, str(crosswalk), index)
+
+    assert result["geonames_id"] == "1"
+    assert policy == "direct_008"
+    assert reason is None
 
 
 def _admin1_fixture(tmp_path):

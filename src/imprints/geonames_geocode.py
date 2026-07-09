@@ -36,6 +36,14 @@ are resolved by highest population, flagged `geonames_ambiguous=True` with
 the candidate count for QA visibility, rather than left unmatched -- a
 places_clean/LLM string with no candidate at all is left unmatched.
 
+For a multi-place record whose existing curated label marks one component as
+New York City, direct mode still tries the MARC 008 scope first. If that
+result is missing or resolves outside New York State, that component only
+uses GeoNames' canonical New York City result instead. Other components from
+the same record retain their 008-scoped results. Candidate rows receive a
+separate key in :mod:`imprints.place_keys`, preventing a co-publication from
+overriding an ordinary single-place ``new york||England`` row.
+
 Requires GeoNames per-country dumps (see `imprints.marc_place_geonames`'
 docstring for the download commands) for whichever countries
 `imprints.marc_place_008_geonames.csv` resolves to -- currently US, CA, GB,
@@ -167,6 +175,11 @@ DEFAULT_COUNTRIES = [
 ]
 
 FEATURE_CLASS_POPULATED_PLACE = "P"
+NYC_SCOPE = ("US", "NY")
+NYC_CANONICAL_NAME = "new york city"
+GEOCODE_POLICY_DIRECT_008 = "direct_008"
+GEOCODE_POLICY_NYC_MULTIPLACE_OVERRIDE = "nyc_multiplace_override"
+GEOCODE_POLICY_NYC_MULTIPLACE_UNAVAILABLE = "nyc_multiplace_unavailable"
 # 0-indexed column positions in a GeoNames main data file (19 tab-separated
 # columns; see https://download.geonames.org/export/dump/readme.txt).
 COL_GEONAMEID = 0
@@ -184,6 +197,9 @@ DIRECT_OUTPUT_FIELDS = [
     "geo_key",
     "places_clean",
     "place_name_008",
+    "geo_key_policy",
+    "geocode_policy",
+    "geocode_reason",
     "geonames_matched",
     "geonames_id",
     "geonames_name",
@@ -198,6 +214,9 @@ DIRECT_OUTPUT_FIELDS = [
 LLM_OUTPUT_FIELDS = [
     "geo_key",
     "places_clean",
+    "geo_key_policy",
+    "geocode_policy",
+    "geocode_reason",
     "llm_normalized_place",
     "geonames_matched",
     "geonames_id",
@@ -332,6 +351,54 @@ def match_place(name, scope, index):
     return result
 
 
+def _is_nyc_result(result):
+    """Whether a GeoNames result is within the New York City override scope.
+
+    Borough-level populated places (for example, Brooklyn) are acceptable:
+    the existing NYC label intentionally groups them with New York City.
+    """
+    return bool(
+        result
+        and result["geonames_country_code"] == NYC_SCOPE[0]
+        and result["geonames_admin1_code"] == NYC_SCOPE[1]
+    )
+
+
+def resolve_direct_place(row, crosswalk_path, index):
+    """Resolve one grouped direct-geocoding row and return result metadata.
+
+    The regular MARC 008 scope is always attempted first. Only a row marked
+    as a multi-place NYC candidate can replace a missing/conflicting result
+    with canonical New York City. Returning ``None`` when that canonical
+    lookup is unavailable is safer than preserving a known-conflicting
+    non-NYC coordinate.
+    """
+    scope = marc_place_geonames.resolve_geo_scope(
+        row["place_name_008"], crosswalk_path
+    )
+    initial = match_place(row["places_clean"], scope, index) if scope else None
+    candidate = (
+        row.get("geo_key_policy")
+        == place_keys.GEO_KEY_POLICY_NYC_MULTIPLACE_CANDIDATE
+    )
+    if not candidate or _is_nyc_result(initial):
+        return initial, GEOCODE_POLICY_DIRECT_008, None
+
+    nyc_result = match_place(NYC_CANONICAL_NAME, NYC_SCOPE, index)
+    scope_name = row.get("place_name_008") or "missing 008 scope"
+    if nyc_result is not None:
+        return (
+            nyc_result,
+            GEOCODE_POLICY_NYC_MULTIPLACE_OVERRIDE,
+            f"multi-place NYC label overrides {scope_name!r} 008 scope",
+        )
+    return (
+        None,
+        GEOCODE_POLICY_NYC_MULTIPLACE_UNAVAILABLE,
+        f"canonical NYC lookup unavailable after conflicting {scope_name!r} 008 scope",
+    )
+
+
 def _row_common_fields(result):
     if result is None:
         return {
@@ -350,22 +417,31 @@ def _row_common_fields(result):
 
 def run_direct(input_csv, crosswalk_path, index, output_csv):
     print(f"Loading {input_csv}")
-    wanted = ["places", "places_clean", "place_name_008", "place_752"]
+    wanted = [
+        "lccn",
+        "places",
+        "places_clean",
+        "place_name_008",
+        "place_752",
+        "city_group",
+    ]
     header = pd.read_csv(input_csv, nrows=0)
     usecols = [c for c in wanted if c in header.columns]
-    df = pd.read_csv(input_csv, usecols=usecols)
+    # LCCNs can be all digits or include a prefix.  Keeping the identifier as
+    # text avoids low-memory CSV inference splitting one record's places
+    # between integer and string group keys.
+    df = pd.read_csv(input_csv, usecols=usecols, dtype={"lccn": "string"})
     groups = place_keys.build_places(df)
-    print(f"{len(groups)} unique (places_clean, place_name_008) groups.")
+    print(f"{len(groups)} unique geo_key groups.")
 
     n_matched = 0
     with open(output_csv, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=DIRECT_OUTPUT_FIELDS)
         writer.writeheader()
         for _, row in groups.iterrows():
-            scope = marc_place_geonames.resolve_geo_scope(
-                row["place_name_008"], crosswalk_path
+            result, geocode_policy, geocode_reason = resolve_direct_place(
+                row, crosswalk_path, index
             )
-            result = match_place(row["places_clean"], scope, index) if scope else None
             if result is not None:
                 n_matched += 1
             writer.writerow(
@@ -373,6 +449,9 @@ def run_direct(input_csv, crosswalk_path, index, output_csv):
                     "geo_key": row["geo_key"],
                     "places_clean": row["places_clean"],
                     "place_name_008": row["place_name_008"],
+                    "geo_key_policy": row["geo_key_policy"],
+                    "geocode_policy": geocode_policy,
+                    "geocode_reason": geocode_reason,
                     "n_records": row["n_records"],
                     **_row_common_fields(result),
                 }
@@ -435,6 +514,11 @@ def run_llm(input_csv, admin1_codes_path, countries, index, output_csv):
                 {
                     "geo_key": row.get("geo_key"),
                     "places_clean": row["places_clean"],
+                    "geo_key_policy": row.get(
+                        "geo_key_policy", place_keys.GEO_KEY_POLICY_008
+                    ),
+                    "geocode_policy": "llm",
+                    "geocode_reason": None,
                     "llm_normalized_place": llm_place,
                     "n_records": row["n_records"],
                     **_row_common_fields(result),

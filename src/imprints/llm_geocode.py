@@ -100,6 +100,7 @@ answer "athens, ohio" rather than defaulting to "athens, greece".
 OUTPUT_FIELDS = [
     "geo_key",
     "places_clean",
+    "geo_key_policy",
     "place_name_008",
     "place_752",
     "places_original_example",
@@ -175,6 +176,9 @@ def _row_to_output(row, model, llm_normalized_place):
     return {
         "geo_key": row["geo_key"],
         "places_clean": row["places_clean"],
+        "geo_key_policy": row.get(
+            "geo_key_policy", place_keys.GEO_KEY_POLICY_008
+        ),
         "place_name_008": row.get("place_name_008"),
         "place_752": row.get("place_752"),
         "places_original_example": row["places_original_example"],
@@ -185,11 +189,27 @@ def _row_to_output(row, model, llm_normalized_place):
 
 
 def _load_geo_keys(csv_path):
-    """Return the set of geo_key values in a CSV, or an empty set if
-    csv_path is None."""
+    """Return direct-matched geo_keys from a CSV, or an empty set.
+
+    Direct-mode output contains both successful and unsuccessful GeoNames
+    attempts. Only successful keys belong in the LLM skip set; otherwise the
+    documented fallback would skip its entire residual. Older caller-provided
+    files that have only a ``geo_key`` column are treated as an already
+    filtered list for backwards compatibility.
+    """
     if csv_path is None:
         return set()
-    return set(pd.read_csv(csv_path, usecols=["geo_key"])["geo_key"].astype(str))
+    header = pd.read_csv(csv_path, nrows=0)
+    usecols = ["geo_key"]
+    if "geonames_matched" in header.columns:
+        usecols.append("geonames_matched")
+    df = pd.read_csv(csv_path, usecols=usecols)
+    if "geonames_matched" in df.columns:
+        matched = df["geonames_matched"]
+        if matched.dtype == object:
+            matched = matched.astype(str).str.strip().str.lower().isin({"true", "1"})
+        df = df[matched]
+    return set(df["geo_key"].astype(str))
 
 
 def run(
@@ -206,12 +226,21 @@ def run(
     client = OpenAI()
 
     print(f"Loading {input_csv}")
-    wanted = ["places", "places_clean", "place_name_008", "place_752"]
+    wanted = [
+        "lccn",
+        "places",
+        "places_clean",
+        "place_name_008",
+        "place_752",
+        "city_group",
+    ]
     header = pd.read_csv(input_csv, nrows=0)
     usecols = [c for c in wanted if c in header.columns]
-    raw_df = pd.read_csv(input_csv, usecols=usecols)
+    # Preserve LCCNs as identifiers so all places from a record are grouped
+    # together even when the CSV mixes numeric-looking and prefixed values.
+    raw_df = pd.read_csv(input_csv, usecols=usecols, dtype={"lccn": "string"})
     df = place_keys.build_places(raw_df)
-    print(f"{len(df)} unique (places_clean, place_name_008) groups.")
+    print(f"{len(df)} unique geo_key groups.")
 
     if sample_size is not None:
         df = df.sample(n=sample_size, random_state=seed).sort_values("geo_key")

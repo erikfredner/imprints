@@ -80,6 +80,13 @@ uv run python -m imprints.join_geocoded
 uv run python -m imprints.geocode_compare
 ```
 
+The direct pass normally trusts MARC 008 as its geographic scope. For a
+multi-place record, if a component already has the curated `New York City`
+label but the 008-scoped match is missing or outside New York State, only
+that component is mapped to canonical NYC; its other places retain their
+008-scoped matches. `geocode_policy` in the joined output records when this
+override was used.
+
 ## Step 4: Figures
 
 Regenerate every figure that needs only `data/PS/data.csv`:

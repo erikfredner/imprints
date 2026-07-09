@@ -5,11 +5,10 @@ Left-merges `data/PS/data.csv` (record-level, one row per place of
 publication) onto the two GeoNames geocoding passes (`imprints.geonames_geocode`)
 on the `geo_key` join key -- `places_clean` plus the decoded MARC 008
 place-of-publication code (`place_name_008`), via
-`imprints.place_keys.build_geo_key`. Both sides build the key identically
-from the same two source columns, so this is a plain exact-match merge,
-many-to-one from data.csv's side. Grouping on `places_clean` alone would
-conflate records that share an ambiguous bare city name (e.g. "Athens") but
-differ in 008 place code -- and therefore in true location.
+`imprints.place_keys.add_geocode_key_columns`. Both sides build the key
+identically. A multi-place component labeled New York City gets a separate
+candidate key so an 008 conflict can be resolved without changing a
+single-place row with the same text and 008 code.
 
 Coordinates come from `--geonames-llm-csv` (default:
 `data/PS/geonames_llm.csv`) -- the residual pathway that matches
@@ -52,6 +51,8 @@ OUTPUT_COLUMNS = [
     "geocoded_lat",
     "geocoded_lon",
     "geocoded_country_code",
+    "geocode_policy",
+    "geocode_reason",
 ]
 
 GEONAMES_COLUMNS = [
@@ -60,6 +61,8 @@ GEONAMES_COLUMNS = [
     "geonames_lat",
     "geonames_lon",
     "geonames_country_code",
+    "geocode_policy",
+    "geocode_reason",
 ]
 
 
@@ -71,25 +74,30 @@ def load_data(input_csv: str) -> pd.DataFrame:
     header = pd.read_csv(input_csv, nrows=0)
     wanted = ["lccn", "year_min", "places_clean", "city_group", "place_name_008"]
     usecols = [c for c in wanted if c in header.columns]
-    df = pd.read_csv(input_csv, usecols=usecols)
+    # LCCNs are identifiers, not quantities.  Explicit text parsing also
+    # keeps the multi-place policy grouping stable across CSV chunks.
+    df = pd.read_csv(input_csv, usecols=usecols, dtype={"lccn": "string"})
     if "place_name_008" not in df.columns:
         df["place_name_008"] = None
-    df["geo_key"] = [
-        place_keys.build_geo_key(pc, p8)
-        for pc, p8 in zip(df["places_clean"], df["place_name_008"])
-    ]
-    return df
+    return place_keys.add_geocode_key_columns(df)
 
 
 def load_geonames(geonames_csv: str) -> pd.DataFrame:
     """Load a per-geo_key-group GeoNames matching result (either
     imprints.geonames_geocode direct or llm mode output -- both share the
     same relevant columns)."""
-    df = pd.read_csv(geonames_csv, usecols=GEONAMES_COLUMNS)
+    header = pd.read_csv(geonames_csv, nrows=0)
+    usecols = [column for column in GEONAMES_COLUMNS if column in header.columns]
+    df = pd.read_csv(geonames_csv, usecols=usecols)
+    for column in ("geocode_policy", "geocode_reason"):
+        if column not in df.columns:
+            # Existing cached result files predate the explicit policy fields.
+            df[column] = None
+    df = df[GEONAMES_COLUMNS]
     if df["geo_key"].duplicated().any():
         raise ValueError(
-            f"{geonames_csv} has duplicate geo_key values; expected one "
-            "row per unique (places_clean, place_name_008) group."
+            f"{geonames_csv} has duplicate geo_key values; expected one row "
+            "per policy-aware geocoding group."
         )
     return df
 
@@ -108,30 +116,54 @@ def join(
     (geonames_matched=True) has its geocoded_lat/lon/country_code columns
     overwritten with the direct match instead -- see module docstring.
     geocode_source records which pathway won for each row."""
-    merged = data_df.merge(geonames_llm_df, on="geo_key", how="left")
+    llm = geonames_llm_df.rename(
+        columns={column: f"{column}_llm" for column in GEONAMES_COLUMNS[1:]}
+    )
+    merged = data_df.merge(llm, on="geo_key", how="left")
 
-    llm_matched = merged["geonames_matched"].fillna(False)
+    llm_matched = merged["geonames_matched_llm"].fillna(False)
     merged["geocode_source"] = llm_matched.map(
         {True: "geonames_llm", False: "unmatched"}
     )
-    merged["geocoded_lat"] = merged["geonames_lat"]
-    merged["geocoded_lon"] = merged["geonames_lon"]
-    merged["geocoded_country_code"] = merged["geonames_country_code"].str.lower()
-    merged = merged.drop(columns=GEONAMES_COLUMNS[1:])
+    merged["geocode_policy"] = merged["geocode_policy_llm"].where(
+        llm_matched, "unmatched"
+    )
+    merged.loc[llm_matched & merged["geocode_policy"].isna(), "geocode_policy"] = (
+        "llm"
+    )
+    merged["geocode_reason"] = merged["geocode_reason_llm"].where(
+        llm_matched, None
+    )
+    merged["geocoded_lat"] = merged["geonames_lat_llm"]
+    merged["geocoded_lon"] = merged["geonames_lon_llm"]
+    merged["geocoded_country_code"] = merged["geonames_country_code_llm"].str.lower()
+    merged = merged.drop(columns=[f"{column}_llm" for column in GEONAMES_COLUMNS[1:]])
 
     if geonames_direct_df is not None:
-        merged = merged.merge(geonames_direct_df, on="geo_key", how="left")
-        use_direct = merged["geonames_matched"].fillna(False)
+        direct = geonames_direct_df.rename(
+            columns={column: f"{column}_direct" for column in GEONAMES_COLUMNS[1:]}
+        )
+        merged = merged.merge(direct, on="geo_key", how="left")
+        use_direct = merged["geonames_matched_direct"].fillna(False)
 
         merged.loc[use_direct, "geocode_source"] = "geonames_direct"
-        merged["geocoded_lat"] = merged["geonames_lat"].where(
+        merged["geocode_policy"] = merged["geocode_policy_direct"].where(
+            use_direct, merged["geocode_policy"]
+        )
+        merged.loc[use_direct & merged["geocode_policy"].isna(), "geocode_policy"] = (
+            "direct_008"
+        )
+        merged["geocode_reason"] = merged["geocode_reason_direct"].where(
+            use_direct, merged["geocode_reason"]
+        )
+        merged["geocoded_lat"] = merged["geonames_lat_direct"].where(
             use_direct, merged["geocoded_lat"]
         )
-        merged["geocoded_lon"] = merged["geonames_lon"].where(
+        merged["geocoded_lon"] = merged["geonames_lon_direct"].where(
             use_direct, merged["geocoded_lon"]
         )
         merged["geocoded_country_code"] = (
-            merged["geonames_country_code"]
+            merged["geonames_country_code_direct"]
             .str.lower()
             .where(use_direct, merged["geocoded_country_code"])
         )
