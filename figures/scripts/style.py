@@ -18,7 +18,7 @@ from cycler import cycler
 FONT_FAMILY = "Helvetica Now Micro"
 
 #: Vector and raster formats every figure is written in.
-OUTPUT_FORMATS = ("png", "svg", "pdf")
+OUTPUT_FORMATS = ("png", "svg", "pdf", "tiff")
 
 #: All figures share this resolution.
 DPI = 1200
