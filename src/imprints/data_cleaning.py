@@ -2,6 +2,7 @@ import os
 import pandas as pd
 import pickle
 import re
+import unicodedata
 from functools import lru_cache
 
 from imprints.marc_places import decode_marc_country
@@ -70,6 +71,9 @@ def parse_range_spec(range_str):
     if not m:
         raise ValueError(f"Range spec not recognized: {range_str}")
     prefix = m.group(1)
+    end_prefix = m.group(4)
+    if end_prefix and end_prefix != prefix:
+        raise ValueError("Range endpoints must use the same LC prefix")
     minval = int(m.group(2)) if m.group(2) else None
     maxval = int(m.group(5)) if m.group(5) else None
     return {"prefix": prefix, "min": minval, "max": maxval}
@@ -130,13 +134,41 @@ def get_digits_for_class(classification, class_range):
 YEAR_MIN_PLAUSIBLE = 1500
 YEAR_MAX_PLAUSIBLE = 2030
 _YEAR_RE = re.compile(r"(?<!\d)\d{4}(?!\d)")
+_CORRECTED_YEAR_RE = re.compile(
+    r"\bi\.?\s*e\.?\s*[,\s]*(?P<year>\d{4})(?!\d)", re.IGNORECASE
+)
+_YEAR_RANGE_RE = re.compile(
+    r"(?<!\d)(?P<start>\d{4})\s*[-–—/]\s*(?P<end>\d{4})(?!\d)"
+)
 
 
 def get_year_int(year):
     """Extract the first plausible four-digit year from a string (or None)."""
     if year is None or (isinstance(year, float) and pd.isna(year)):
         return None
-    for match in _YEAR_RE.finditer(str(year)):
+    text = str(year)
+    # Cataloger corrections such as "1863 [i.e. 1963]" supersede the
+    # erroneous year printed on the item.
+    corrected = _CORRECTED_YEAR_RE.search(text)
+    if corrected:
+        value = int(corrected.group("year"))
+        if YEAR_MIN_PLAUSIBLE <= value <= YEAR_MAX_PLAUSIBLE:
+            return value
+    # A short span can be a serial/multivolume publication run, for which the
+    # start year is useful. A decades-wide span is an uncertainty interval;
+    # reporting its lower boundary as an exact publication year is misleading.
+    # Restrict this rule to syntactic ranges: prose can legitimately mention
+    # distant dates (for example, publication and copyright-renewal years).
+    for range_match in _YEAR_RANGE_RE.finditer(text):
+        start = int(range_match.group("start"))
+        end = int(range_match.group("end"))
+        if (
+            YEAR_MIN_PLAUSIBLE <= start <= YEAR_MAX_PLAUSIBLE
+            and YEAR_MIN_PLAUSIBLE <= end <= YEAR_MAX_PLAUSIBLE
+            and abs(end - start) > 25
+        ):
+            return None
+    for match in _YEAR_RE.finditer(text):
         value = int(match.group())
         if YEAR_MIN_PLAUSIBLE <= value <= YEAR_MAX_PLAUSIBLE:
             return value
@@ -208,6 +240,69 @@ def _parse_place_code_008(field_008):
     return field_008[15:18]
 
 
+def _parse_date1_008(field_008):
+    """Return MARC 008 Date 1 (bytes 7-10) when it is a plausible year."""
+    if field_008 is None or (isinstance(field_008, float) and pd.isna(field_008)):
+        return None
+    if not isinstance(field_008, str) or len(field_008) != 40:
+        return None
+    date_type = field_008[6]
+    date1 = get_year_int(field_008[7:11])
+    date2 = get_year_int(field_008[11:15])
+    # q encodes a range of questionable years, not an exact year. Using its
+    # lower bound manufactured spikes at round boundaries (especially 1900).
+    if date_type == "q" and date1 != date2:
+        return None
+    # Some malformed/incomplete "19--" records are encoded as an extremely
+    # broad multiple-date range (1900-1999/9999). It is not defensible to
+    # report the lower bound as the publication year.
+    if date_type == "m" and (
+        date2 is None or (date1 is not None and date2 - date1 > 25)
+    ):
+        return None
+    return date1
+
+
+def _years_from_imprint_fields(occurrences):
+    """Return ranked publication, copyright, and other 260/264 years."""
+    ranked = {"publication": [], "copyright": [], "other": []}
+    if not isinstance(occurrences, (list, tuple)) or not occurrences:
+        return ranked
+    for occurrence in occurrences:
+        tag = occurrence.get("tag")
+        ind2 = occurrence.get("ind2", " ")
+        if tag == "260" or (tag == "264" and ind2 in (" ", "1")):
+            bucket = "publication"
+        elif tag == "264" and ind2 == "4":
+            bucket = "copyright"
+        else:
+            bucket = "other"
+        for code, text in occurrence.get("subfields", []):
+            if code == "c":
+                year = get_year_int(text)
+                if year is not None:
+                    ranked[bucket].append(year)
+    return ranked
+
+
+def _select_publication_year(row):
+    """Choose a year by MARC evidence quality and return (year, source)."""
+    ranked = _years_from_imprint_fields(row.get("imprint_fields"))
+    candidates = (
+        (ranked["publication"], "260/264 publication"),
+        ([row.get("year_008")] if row.get("year_008") is not None else [], "008 date1"),
+        (ranked["copyright"], "264 copyright"),
+        (ranked["other"], "264 other"),
+        ([row.get("year_int_legacy")] if row.get("year_int_legacy") is not None else [], "legacy 260/264"),
+        ([row.get("publisher_year_int")] if row.get("publisher_year_int") is not None else [], "publisher text"),
+    )
+    for values, source in candidates:
+        valid = [int(value) for value in values if value is not None and not pd.isna(value)]
+        if valid:
+            return min(valid), source
+    return None, None
+
+
 def _decode_country_codes(codes):
     """Order-preserving decode of a list of MARC country codes to names.
     Unrecognized codes decode to None (not dropped), so gaps stay visible
@@ -231,8 +326,11 @@ def _flatten_place_hierarchy(occurrences):
         return None
     flattened = []
     for occ in occurrences:
-        by_code = dict(occ.get("subfields", []))
-        parts = [by_code[c] for c in _PLACE_752_CODES_ORDER if c in by_code]
+        by_code = {code: [] for code in _PLACE_752_CODES_ORDER}
+        for code, text in occ.get("subfields", []):
+            if code in by_code:
+                by_code[code].append(text)
+        parts = [text for code in _PLACE_752_CODES_ORDER for text in by_code[code]]
         if parts:
             flattened.append(", ".join(parts))
     return flattened or None
@@ -242,8 +340,9 @@ def clean_string(s):
     """Lowercase, replace punctuation with spaces, collapse to single spaces."""
     if s is None or (isinstance(s, float) and pd.isna(s)):
         return None
-    s = str(s)
-    s = re.sub(r"[^a-zA-Z]", " ", s)
+    s = unicodedata.normalize("NFKD", str(s))
+    s = "".join(c for c in s if not unicodedata.combining(c))
+    s = "".join(c if c.isalpha() else " " for c in s)
     s = re.sub(r"\s+", " ", s)
     return s.lower().strip()
 
@@ -412,6 +511,16 @@ def load_pickles_to_dataframe(pickle_dir):
 
 
 def cleaning_pipeline(df, class_range):
+    df = df.copy().reset_index(drop=True)
+    # Old pickles have no source ID. A per-input-row identity prevents records
+    # with missing LCCNs from being merged during place deduplication.
+    if "source_record_id" not in df.columns:
+        df["source_record_id"] = [f"legacy:{i}" for i in range(len(df))]
+    else:
+        missing_id = df["source_record_id"].isna()
+        df.loc[missing_id, "source_record_id"] = [
+            f"legacy:{i}" for i in df.index[missing_id]
+        ]
     # For each record, filter to only target class_range
     # Drop those with no matching classification numbers
     df["matching_classifications"] = df["classifications"].map(
@@ -429,9 +538,18 @@ def cleaning_pipeline(df, class_range):
     df["personal_name_first"] = df["first_author"]
     df["title_first"] = df["title"]
 
-    df["year_int"] = df["year"].map(get_years_ints)
+    df["year_int_legacy"] = df["year"].map(get_years_ints)
+    if "field_008" in df.columns:
+        df["year_008"] = df["field_008"].map(_parse_date1_008)
+    else:
+        df["year_008"] = None
     df["publisher_year_int"] = df["publishers"].map(get_publishers_year_ints)
-    df["year_min"] = df[["year_int", "publisher_year_int"]].min(axis=1)
+    selected_years = df.apply(_select_publication_year, axis=1)
+    df["year_min"] = selected_years.map(lambda value: value[0])
+    df["year_source"] = selected_years.map(lambda value: value[1])
+    # Retain the historical column name for downstream compatibility, but it
+    # now means the selected best publication-year estimate.
+    df["year_int"] = df["year_min"]
     df["decade"] = df["year_min"].map(get_decade)
     df["publisher_clean"] = df["publisher_first"].map(clean_string)
 
@@ -464,8 +582,12 @@ def cleaning_pipeline(df, class_range):
     # the raw exploded strings is insufficient: catalog records can repeat a
     # place as variants such as ``New York :`` and ``[New York] :``.
     df = df[df["class_digits"].notnull() & df["year_min"].notnull()]
+    normalized_lccn = df["lccn"].astype("string").str.strip()
+    has_lccn = normalized_lccn.notna() & normalized_lccn.ne("")
+    df["record_dedup_id"] = df["source_record_id"].astype("string")
+    df.loc[has_lccn, "record_dedup_id"] = "lccn:" + normalized_lccn[has_lccn]
     df = df.drop_duplicates(
-        subset=["lccn", "places_clean", "year_min"], keep="first"
+        subset=["record_dedup_id", "places_clean", "year_min"], keep="first"
     ).reset_index(drop=True)
 
     return df

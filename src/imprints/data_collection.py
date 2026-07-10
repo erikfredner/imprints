@@ -156,6 +156,11 @@ def collect_place_occurrences(record):
     return _collect_field_occurrences(record, PLACE_HIERARCHY_TAGS)
 
 
+def collect_imprint_occurrences(record):
+    """Capture 260/264 occurrences without losing indicator provenance."""
+    return _collect_field_occurrences(record, ("260", "264"))
+
+
 def extract_008(record):
     """Return the raw 008 controlfield text, or None if absent/empty.
 
@@ -246,12 +251,15 @@ def parse_range_spec(range_str):
     if not m:
         raise ValueError(f"Range spec not recognized: {range_str}")
     prefix = m.group(1)
+    end_prefix = m.group(4)
+    if end_prefix and end_prefix != prefix:
+        raise ValueError("Range endpoints must use the same LC prefix")
     minval = int(m.group(2)) if m.group(2) else None
     maxval = int(m.group(5)) if m.group(5) else None
     return {"prefix": prefix, "min": minval, "max": maxval}
 
 
-def process_record(record, class_range):
+def process_record(record, class_range, source_record_id=None):
     buckets = collect_subfields(record)
     classifications = buckets.get(("050", "a"), [])
     matches_class_range = filter_classification(classifications, class_range)
@@ -270,6 +278,7 @@ def process_record(record, class_range):
 
     data = {
         "lccn": lccn[0] if lccn else None,
+        "source_record_id": source_record_id,
         "classifications": classifications,
         "matches_class_range": matches_class_range,
         "title": title[0] if title else None,
@@ -277,6 +286,7 @@ def process_record(record, class_range):
         "year": years,
         "places": places,
         "publishers": publishers,
+        "imprint_fields": collect_imprint_occurrences(record),
         "first_author": personal_name_100[0] if personal_name_100 else None,
         # local_call_numbers/first_author_dates/subject_genre_fields support
         # imprints.secondary_classification. field_008 supports that module
@@ -307,8 +317,13 @@ def process_single_file(args):
     all_data = []
     start_time = time.time()
     try:
-        for record in parse_records(file_path):
-            data = process_record(record, class_range)
+        source_file_id = os.path.basename(file_path)
+        for record_number, record in enumerate(parse_records(file_path), 1):
+            data = process_record(
+                record,
+                class_range,
+                source_record_id=f"{source_file_id}:{record_number}",
+            )
             all_data.append(data)
         with open(output_file, "wb") as f:
             pickle.dump(all_data, f, protocol=pickle.HIGHEST_PROTOCOL)
